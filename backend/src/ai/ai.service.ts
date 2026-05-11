@@ -25,13 +25,43 @@ export class AiService {
     this.genAI = new GoogleGenerativeAI(apiKey || '');
   }
 
+  async generateQuestionsForRole(jobRole: string): Promise<any> {
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json' },
+    });
+
+    const prompt = `
+      You are an expert technical interviewer. Generate 5 highly relevant interview questions
+      for the job role: "${jobRole}".
+      The questions should be a mix of technical concepts, problem-solving, and behavioral.
+      Return the result as a valid JSON array of objects following this exact schema:
+      [{
+        "questionText": "string",
+        "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
+        "expectedConcepts": ["string"],
+        "difficulty": number (1-5)
+      }]
+    `;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return JSON.parse(response.text());
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error('Failed to generate questions for role', err.stack);
+      throw new InternalServerErrorException('AI Question generation failed');
+    }
+  }
+
   async generateQuestionsFromResume(
     resumeText: string,
     jobRole: string,
   ): Promise<any> {
-    // Using gemini-1.5-pro for complex reasoning tasks
+    // Using gemini-2.5-flash for complex reasoning tasks
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-1.5-pro',
+      model: 'gemini-2.5-flash',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -69,7 +99,7 @@ export class AiService {
     answer: string,
   ): Promise<any> {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-1.5-pro',
+      model: 'gemini-2.5-flash',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -105,8 +135,10 @@ export class AiService {
     audioBuffer: Buffer,
     mimeType: string,
   ): Promise<string> {
-    // Using gemini-1.5-flash for faster transcription
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Using gemini-2.5-flash-lite for faster, cost-effective transcription
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash-lite',
+    });
 
     try {
       const result = await model.generateContent([

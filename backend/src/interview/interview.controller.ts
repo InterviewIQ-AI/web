@@ -2,10 +2,36 @@ import {
   Controller, Post, Get, Body, Param, ParseIntPipe, BadRequestException,
 } from '@nestjs/common';
 import { InterviewService } from './interview.service';
+import { AiService } from '../ai/ai.service';
 
 @Controller('interview')
 export class InterviewController {
-  constructor(private readonly interviewService: InterviewService) {}
+  constructor(
+    private readonly interviewService: InterviewService,
+    private readonly aiService: AiService,
+  ) {}
+
+  /**
+   * POST /interview/start
+   * Body: { jobRole: string }
+   * Generates questions with AI (no resume needed) and saves interview + questions to DB.
+   */
+  @Post('start')
+  async startInterview(@Body('jobRole') jobRole: string) {
+    if (!jobRole) throw new BadRequestException('jobRole is required');
+
+    // 1. Generate questions via Gemini
+    const generatedQuestions = await this.aiService.generateQuestionsForRole(jobRole);
+
+    // 2. Save interview + questions to DB
+    const { interview, questions: savedQuestions } =
+      await this.interviewService.createInterview(jobRole, generatedQuestions);
+
+    return {
+      interviewId: interview.id,
+      questions: savedQuestions,
+    };
+  }
 
   /** GET /interview — list all interviews */
   @Get()
