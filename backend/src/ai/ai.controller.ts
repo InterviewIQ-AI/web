@@ -1,4 +1,10 @@
-import { Controller, Post, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
 
@@ -12,10 +18,13 @@ export class AiController {
     if (!file) {
       throw new BadRequestException('No audio file provided');
     }
-    
+
     // Fallback mimeType if it's octet-stream
-    const mimeType = file.mimetype === 'application/octet-stream' ? 'audio/webm' : file.mimetype;
-    
+    const mimeType =
+      file.mimetype === 'application/octet-stream'
+        ? 'audio/webm'
+        : file.mimetype;
+
     const text = await this.aiService.transcribeAudio(file.buffer, mimeType);
     return { transcript: text };
   }
