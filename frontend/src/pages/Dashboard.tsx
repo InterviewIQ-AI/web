@@ -11,6 +11,11 @@ interface Question {
   expectedConcepts: string[];
 }
 
+interface StartResponse {
+  interviewId: number;
+  question: Question;
+}
+
 export default function Dashboard() {
   const [jobRole, setJobRole] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -35,14 +40,11 @@ export default function Dashboard() {
         throw new Error(err.message ?? 'Failed to start interview');
       }
 
-      const data = await res.json() as {
-        interviewId: number;
-        questions: Question[];
-      };
+      const data = await res.json() as StartResponse;
 
-      // Navigate to interview room with the DB-persisted questions
+      // Navigate to interview room with first question
       navigate(`/interview/${data.interviewId}`, {
-        state: { interviewId: data.interviewId, questions: data.questions },
+        state: { interviewId: data.interviewId, question: data.question },
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
@@ -77,7 +79,7 @@ export default function Dashboard() {
             Start Your Interview
           </h2>
           <p className="text-gray-500 text-sm mt-2 text-center">
-            AI will generate 5 tailored questions and save them to your session.
+            AI will ask you unlimited adaptive questions until you end the interview.
           </p>
         </div>
 
@@ -115,7 +117,7 @@ export default function Dashboard() {
           {isLoading ? (
             <>
               <Loader2 className="animate-spin" size={20} />
-              Generating &amp; Saving Questions…
+              Generating First Question…
             </>
           ) : (
             <>

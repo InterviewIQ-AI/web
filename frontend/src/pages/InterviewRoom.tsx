@@ -2,13 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
-  Volume2, AlertCircle, Loader2, CheckCircle,
+  Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Cross-browser MIME type detection ───────────────────────────────────────
-// MediaRecorder support varies: Chrome/Edge prefer audio/webm;codecs=opus,
-// Firefox supports audio/ogg;codecs=opus, Safari may only support audio/mp4.
 function getSupportedMimeType(): string {
   const candidates = [
     'audio/webm;codecs=opus',
@@ -19,7 +17,6 @@ function getSupportedMimeType(): string {
   for (const type of candidates) {
     if (MediaRecorder.isTypeSupported(type)) return type;
   }
-  // Final fallback – let the browser decide
   return '';
 }
 
@@ -34,7 +31,7 @@ interface Question {
 
 interface LocationState {
   interviewId: number;
-  questions: Question[];
+  question: Question;
 }
 
 interface Evaluation {
@@ -51,14 +48,18 @@ export default function InterviewRoom() {
   const state = location.state as LocationState | null;
 
   const interviewId = state?.interviewId ?? null;
-  const questions: Question[] = state?.questions ?? [];
 
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(
+    state?.question ?? null,
+  );
+  const [questionNumber, setQuestionNumber] = useState(1);
   const [answer, setAnswer] = useState('');
   const [cameraOn, setCameraOn] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetchingNext, setIsFetchingNext] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
@@ -67,29 +68,25 @@ export default function InterviewRoom() {
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  // Tracks whether the current answer was produced via voice (set when recording starts)
   const isVoiceAnswerRef = useRef(false);
-  // Stores the MIME type negotiated with the browser so FormData sends the right type
   const mimeTypeRef = useRef<string>('audio/webm');
+  // Stores all answered Q&As for adaptive follow-up generation
+  const answeredHistoryRef = useRef<Array<{ question: string; answer: string }>>([]);
 
-  const currentQuestion: Question | undefined = questions[currentIdx];
-  const totalQuestions = questions.length;
-  const isLastQuestion = currentIdx === totalQuestions - 1;
-
-  // Reset timer + clear state when question changes; also cancel any ongoing speech
+  // Reset answer/evaluation when moving to a new question
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
     setStartTime(Date.now());
     window.speechSynthesis.cancel();
-  }, [currentIdx]);
+  }, [currentQuestion?.id]);
 
-  // Cancel speech on unmount to avoid it continuing after navigation
+  // Cancel speech on unmount
   useEffect(() => {
     return () => { window.speechSynthesis.cancel(); };
   }, []);
 
-  // Camera Setup
+  // Camera setup
   useEffect(() => {
     if (cameraOn) {
       navigator.mediaDevices
@@ -112,61 +109,41 @@ export default function InterviewRoom() {
     };
   }, [cameraOn]);
 
-  // ─── Voice Recording ────────────────────────────────────────────────────
+  // ─── Voice Recording ──────────────────────────────────────────────────────
   const toggleRecording = async () => {
-    // ── Stop branch ──
     if (isRecording) {
-      // stop() triggers onstop asynchronously; state is updated there
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
       return;
     }
 
-    // ── Start branch ──
     setErrorMsg('');
     audioChunksRef.current = [];
 
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          // Hints for better voice quality
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-        },
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
       });
 
-      // Pick the best MIME type this browser actually supports
       const mimeType = getSupportedMimeType();
-      mimeTypeRef.current = mimeType || 'audio/webm'; // store for FormData
+      mimeTypeRef.current = mimeType || 'audio/webm';
 
-      const recorderOptions = mimeType ? { mimeType } : {};
-      const recorder = new MediaRecorder(audioStream, recorderOptions);
-
+      const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : {});
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-
       recorder.onstop = async () => {
-        // Stop all tracks so the mic indicator disappears immediately
         audioStream.getTracks().forEach((t) => t.stop());
-
-        const blob = new Blob(audioChunksRef.current, {
-          type: mimeTypeRef.current,
-        });
+        const blob = new Blob(audioChunksRef.current, { type: mimeTypeRef.current });
         await transcribeAudio(blob);
       };
 
       mediaRecorderRef.current = recorder;
-      // timeslice = 250 ms — ensures ondataavailable fires even for short recordings
       recorder.start(250);
       isVoiceAnswerRef.current = true;
       setIsRecording(true);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Microphone access denied. Please check browser permissions.';
+      const msg = err instanceof Error ? err.message : 'Microphone access denied.';
       setErrorMsg(msg);
     }
   };
@@ -175,63 +152,43 @@ export default function InterviewRoom() {
     setIsTranscribing(true);
     try {
       const formData = new FormData();
-
-      // Derive a sensible filename extension from the actual MIME type so that
-      // the backend (Multer / Gemini) can infer the format correctly.
       const ext = mimeTypeRef.current.includes('ogg')
         ? 'ogg'
         : mimeTypeRef.current.includes('mp4')
           ? 'mp4'
           : 'webm';
-
-      // The field name 'audio' matches the FileInterceptor('audio') on the backend
       formData.append('audio', audioBlob, `recording.${ext}`);
 
       const res = await fetch('/api/ai/transcribe', { method: 'POST', body: formData });
-
       if (!res.ok) {
-        // Attempt to surface the server's error message if available
         let serverMsg = 'Transcription failed on server';
         try {
-          const errBody = await res.json() as { message?: string };
-          if (errBody.message) serverMsg = errBody.message;
-        } catch { /* ignore parse errors */ }
+          const e = await res.json() as { message?: string };
+          if (e.message) serverMsg = e.message;
+        } catch { /* ignore */ }
         throw new Error(serverMsg);
       }
 
       const data = await res.json() as { transcript: string };
       const transcript = data.transcript?.trim();
-
       if (transcript) {
-        // Append with a space when there's existing text, otherwise replace
-        setAnswer((prev) =>
-          prev.trim() ? `${prev.trim()} ${transcript}` : transcript,
-        );
+        setAnswer((prev) => prev.trim() ? `${prev.trim()} ${transcript}` : transcript);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown transcription error';
-      setErrorMsg('Transcription failed: ' + msg);
+      setErrorMsg('Transcription failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsTranscribing(false);
     }
   };
 
-  // ─── Speech Synthesis ────────────────────────────────────────────────────
-  // Wrapped in useCallback so its identity stays stable across renders.
+  // ─── Speech Synthesis ─────────────────────────────────────────────────────
   const speakQuestion = useCallback(() => {
     if (!currentQuestion || !window.speechSynthesis) return;
-
-    // Cancel any speech that is currently playing before starting a new one
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(currentQuestion.questionText);
-
-    // Voice selection: prefer a natural-sounding English voice when available.
-    // The voices list loads asynchronously on some browsers, so we re-check
-    // after the onvoiceschanged event fires if the list is still empty.
     const applyVoice = (u: SpeechSynthesisUtterance) => {
       const voices = window.speechSynthesis.getVoices();
-      // Preference order: Google US → any en-US → any English
       const preferred =
         voices.find((v) => v.name.toLowerCase().includes('google') && v.lang.startsWith('en')) ??
         voices.find((v) => v.lang === 'en-US') ??
@@ -241,8 +198,6 @@ export default function InterviewRoom() {
     };
 
     applyVoice(utterance);
-
-    // Safari & Firefox may not have voices ready on first call
     if (!utterance.voice && window.speechSynthesis.getVoices().length === 0) {
       const onVoicesReady = () => {
         applyVoice(utterance);
@@ -250,31 +205,24 @@ export default function InterviewRoom() {
         window.speechSynthesis.speak(utterance);
       };
       window.speechSynthesis.addEventListener('voiceschanged', onVoicesReady);
-      return; // speak() will be called inside the listener
+      return;
     }
 
-    utterance.rate = 0.88;   // Slightly slower than default for clarity
+    utterance.rate = 0.88;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-
-    // Silent error handler — avoids unhandled-rejection noise in the console
     utterance.onerror = (e) => {
-      // 'interrupted' fires whenever cancel() is called; not a real error
-      if (e.error !== 'interrupted') {
-        console.warn('SpeechSynthesis error:', e.error);
-      }
+      if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
     };
-
     window.speechSynthesis.speak(utterance);
   }, [currentQuestion]);
 
-  // ─── Submit Answer → Save to DB ─────────────────────────────────────────
+  // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async () => {
     if (!answer.trim() || !currentQuestion) return;
 
     setIsSubmitting(true);
     setErrorMsg('');
-
     const timeTakenSeconds = Math.round((Date.now() - startTime) / 1000);
 
     try {
@@ -284,8 +232,6 @@ export default function InterviewRoom() {
         body: JSON.stringify({
           questionId: currentQuestion.id,
           userAnswer: answer.trim(),
-          // Use the dedicated ref — audioChunksRef.current may already be cleared
-          // by the time this runs after a transcription cycle.
           isVoice: isVoiceAnswerRef.current,
           timeTakenSeconds,
         }),
@@ -294,45 +240,69 @@ export default function InterviewRoom() {
       if (!res.ok) {
         let serverMsg = 'Failed to save answer';
         try {
-          const errBody = await res.json() as { message?: string };
-          if (errBody.message) serverMsg = errBody.message;
+          const e = await res.json() as { message?: string };
+          if (e.message) serverMsg = e.message;
         } catch { /* ignore */ }
         throw new Error(serverMsg);
       }
 
       const data = await res.json() as { evaluation: Evaluation };
       setEvaluation(data.evaluation);
-      // Reset voice flag for next question
+
+      // Push to history for adaptive follow-up generation
+      answeredHistoryRef.current.push({
+        question: currentQuestion.questionText,
+        answer: answer.trim(),
+      });
       isVoiceAnswerRef.current = false;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setErrorMsg('Could not save answer: ' + msg);
+      setErrorMsg('Could not save answer: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ─── Next question or finish ─────────────────────────────────────────────
-  const handleNext = async () => {
-    if (isLastQuestion) {
-      // Mark interview complete
-      if (interviewId) {
-        await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
-      }
-      navigate('/');
-    } else {
-      setCurrentIdx((i) => i + 1);
+  // ─── Next Question (adaptive) ─────────────────────────────────────────────
+  const handleNextQuestion = async () => {
+    setIsFetchingNext(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`/api/interview/${interviewId}/next-question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ history: answeredHistoryRef.current }),
+      });
+
+      if (!res.ok) throw new Error('Failed to fetch next question');
+      const data = await res.json() as { question: Question };
+      setCurrentQuestion(data.question);
+      setQuestionNumber((n) => n + 1);
+    } catch (err: unknown) {
+      setErrorMsg('Could not load next question. Please try again.');
+    } finally {
+      setIsFetchingNext(false);
     }
   };
 
-  // ─── No questions guard ──────────────────────────────────────────────────
+  // ─── End Interview ────────────────────────────────────────────────────────
+  const handleEndInterview = async () => {
+    setIsEnding(true);
+    try {
+      if (interviewId) {
+        await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
+      }
+    } catch { /* best-effort */ }
+    navigate('/');
+  };
+
+  // ─── Guard ────────────────────────────────────────────────────────────────
   if (!currentQuestion) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8 bg-[#0a0a0f]">
         <div className="text-center text-gray-400 space-y-4">
           <AlertCircle size={48} className="mx-auto text-yellow-400" />
           <p className="text-xl font-medium">No interview session found.</p>
-          <p className="text-sm">Please go back and upload your resume first.</p>
+          <p className="text-sm">Please go back and start an interview first.</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="mt-4 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl transition-colors"
@@ -352,6 +322,7 @@ export default function InterviewRoom() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row gap-6 p-6 bg-[#0a0a0f]">
+
       {/* ── Left Panel ── */}
       <div className="w-full md:w-1/3 flex flex-col gap-4">
         {errorMsg && (
@@ -396,9 +367,7 @@ export default function InterviewRoom() {
           <div className="space-y-4 text-sm text-gray-400">
             <div className="flex justify-between items-center">
               <span>Question</span>
-              <span className="font-medium text-purple-400">
-                {currentIdx + 1} of {totalQuestions}
-              </span>
+              <span className="font-medium text-purple-400">#{questionNumber}</span>
             </div>
             {interviewId && (
               <div className="flex justify-between items-center">
@@ -406,11 +375,19 @@ export default function InterviewRoom() {
                 <span className="font-mono text-gray-500">#{interviewId}</span>
               </div>
             )}
-            <div className="w-full bg-gray-800 h-2 rounded-full mt-2 overflow-hidden">
-              <div
-                className="bg-purple-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${((currentIdx + 1) / totalQuestions) * 100}%` }}
-              />
+            <div className="flex justify-between items-center">
+              <span>Answered</span>
+              <span className="font-medium text-green-400">
+                {answeredHistoryRef.current.length} question{answeredHistoryRef.current.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {/* Pulsing "live" indicator */}
+            <div className="flex items-center gap-2 pt-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+              </span>
+              <span className="text-xs text-gray-500">Interview in progress</span>
             </div>
           </div>
         </div>
@@ -418,10 +395,11 @@ export default function InterviewRoom() {
 
       {/* ── Right Panel ── */}
       <div className="w-full md:w-2/3 flex flex-col gap-4">
+
         {/* Question Card */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentIdx}
+            key={currentQuestion.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -437,6 +415,7 @@ export default function InterviewRoom() {
               <span className="text-xs text-gray-600">
                 Difficulty: {'★'.repeat(currentQuestion.difficulty)}{'☆'.repeat(5 - currentQuestion.difficulty)}
               </span>
+              <span className="ml-auto text-xs text-gray-600 font-mono">Q{questionNumber}</span>
             </div>
             <button
               onClick={speakQuestion}
@@ -562,12 +541,32 @@ export default function InterviewRoom() {
               {evaluation.idealAnswerComparison}
             </div>
 
-            <button
-              onClick={handleNext}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-3 rounded-xl transition-all"
-            >
-              {isLastQuestion ? 'Finish Interview' : 'Next Question →'}
-            </button>
+            {/* Next Question + End Interview buttons */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={handleNextQuestion}
+                disabled={isFetchingNext || isEnding}
+                className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all"
+              >
+                {isFetchingNext ? (
+                  <><Loader2 size={18} className="animate-spin" /><span>Generating Next Question…</span></>
+                ) : (
+                  <><span>Next Question</span><ArrowRight size={18} /></>
+                )}
+              </button>
+
+              <button
+                onClick={handleEndInterview}
+                disabled={isFetchingNext || isEnding}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-red-500/20 hover:border-red-500/50 border border-gray-700 text-gray-400 hover:text-red-400 px-5 py-3 rounded-xl transition-all font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isEnding ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <><LogOut size={18} /><span>End Interview</span></>
+                )}
+              </button>
+            </div>
           </motion.div>
         )}
       </div>

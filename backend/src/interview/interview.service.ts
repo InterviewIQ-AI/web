@@ -13,27 +13,56 @@ export class InterviewService {
     private readonly aiService: AiService,
   ) {}
 
-  async createInterview(jobRole: string, generatedQuestions: any[]) {
+  async createInterview(jobRole: string, firstQuestion: any) {
     // For now use userId = 1 (guest user). Update when auth is added.
     const [interview] = await this.db
       .insert(interviews)
       .values({ userId: 1, jobRole, status: 'IN_PROGRESS' })
       .returning();
 
-    const questionRows = generatedQuestions.map((q) => ({
-      interviewId: interview.id,
-      questionText: q.questionText,
-      category: q.category,
-      difficulty: q.difficulty ?? 3,
-      expectedConcepts: q.expectedConcepts ?? [],
-    }));
-
-    const savedQuestions = await this.db
+    const [savedQuestion] = await this.db
       .insert(questions)
-      .values(questionRows)
+      .values({
+        interviewId: interview.id,
+        questionText: firstQuestion.questionText,
+        category: firstQuestion.category,
+        difficulty: firstQuestion.difficulty ?? 3,
+        expectedConcepts: firstQuestion.expectedConcepts ?? [],
+      })
       .returning();
 
-    return { interview, questions: savedQuestions };
+    return { interview, question: savedQuestion };
+  }
+
+  async addNextQuestion(
+    interviewId: number,
+    history: Array<{ question: string; answer: string }>,
+  ) {
+    const interview = await this.db.query.interviews.findFirst({
+      where: eq(interviews.id, interviewId),
+    });
+
+    if (!interview) {
+      throw new NotFoundException(`Interview ${interviewId} not found`);
+    }
+
+    const nextQ = await this.aiService.generateNextQuestion(
+      interview.jobRole,
+      history,
+    );
+
+    const [savedQuestion] = await this.db
+      .insert(questions)
+      .values({
+        interviewId,
+        questionText: nextQ.questionText,
+        category: nextQ.category,
+        difficulty: nextQ.difficulty ?? 3,
+        expectedConcepts: nextQ.expectedConcepts ?? [],
+      })
+      .returning();
+
+    return { question: savedQuestion };
   }
 
   async getInterview(interviewId: number) {

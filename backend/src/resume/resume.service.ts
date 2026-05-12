@@ -23,24 +23,24 @@ export class ResumeService {
 
       this.logger.log(`Extracted ${resumeText.length} characters from resume.`);
 
-      // Step 1: Generate questions via Gemini
-      const generatedQuestions = await this.aiService.generateQuestionsFromResume(
+      // Step 1: Generate first question via Gemini
+      const firstQuestion = await this.aiService.generateQuestionsFromResume(
         resumeText,
         jobRole,
       );
 
-      // Step 2: Persist interview + questions to DB
-      const { interview, questions: savedQuestions } =
-        await this.interviewService.createInterview(jobRole, generatedQuestions);
+      // Step 2: Persist interview + first question to DB
+      const { interview, question: savedQuestion } =
+        await this.interviewService.createInterview(jobRole, firstQuestion);
 
       this.logger.log(
-        `Created interview #${interview.id} with ${savedQuestions.length} questions.`,
+        `Created interview #${interview.id} with first question #${savedQuestion.id}.`,
       );
 
       return {
         message: 'Resume processed successfully',
         interviewId: interview.id,
-        questions: savedQuestions, // include DB ids so frontend can submit answers
+        question: savedQuestion, // single first question for the interview room
       };
     } catch (error) {
       this.logger.error('Failed to process resume', error);

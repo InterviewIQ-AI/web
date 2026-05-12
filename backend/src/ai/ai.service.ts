@@ -32,16 +32,16 @@ export class AiService {
     });
 
     const prompt = `
-      You are an expert technical interviewer. Generate 5 highly relevant interview questions
-      for the job role: "${jobRole}".
-      The questions should be a mix of technical concepts, problem-solving, and behavioral.
-      Return the result as a valid JSON array of objects following this exact schema:
-      [{
+      You are an expert technical interviewer. Generate the FIRST interview question
+      for a candidate applying for the role: "${jobRole}".
+      Make it a strong opening question covering a core technical or behavioral topic.
+      Return a single JSON object (not an array) with this exact schema:
+      {
         "questionText": "string",
         "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
-      }]
+      }
     `;
 
     try {
@@ -50,8 +50,52 @@ export class AiService {
       return JSON.parse(response.text());
     } catch (error: unknown) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to generate questions for role', err.stack);
+      this.logger.error('Failed to generate first question for role', err.stack);
       throw new InternalServerErrorException('AI Question generation failed');
+    }
+  }
+
+  async generateNextQuestion(
+    jobRole: string,
+    history: Array<{ question: string; answer: string }>,
+  ): Promise<any> {
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { responseMimeType: 'application/json' },
+    });
+
+    const historyText = history
+      .map((h, i) => `Q${i + 1}: ${h.question}\nA${i + 1}: ${h.answer}`)
+      .join('\n\n');
+
+    const prompt = `
+      You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
+
+      Previous questions and answers:
+      ${historyText}
+
+      Based on the candidate's responses, generate the NEXT most relevant interview question.
+      - Build on gaps or interesting points from previous answers
+      - Cover a different aspect than already asked
+      - Vary between TECHNICAL, SYSTEM_DESIGN, and BEHAVIORAL categories
+
+      Return a single JSON object (not an array):
+      {
+        "questionText": "string",
+        "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
+        "expectedConcepts": ["string"],
+        "difficulty": number (1-5)
+      }
+    `;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return JSON.parse(response.text());
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error('Failed to generate next question', err.stack);
+      throw new InternalServerErrorException('AI next question generation failed');
     }
   }
 
@@ -66,17 +110,16 @@ export class AiService {
     });
 
     const prompt = `
-      You are an expert technical interviewer. Based on the following resume text and the target job role "${jobRole}", 
-      generate 5 highly relevant interview questions. 
-      The questions should be a mix of technical concepts, problem-solving, and project deep-dives based on the resume.
-      Return the result as a valid JSON array of objects following this exact schema:
-      [{
+      You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
+      generate the FIRST interview question. Make it a strong opener that dives into a key skill from the resume.
+      Return a single JSON object (not an array):
+      {
         "questionText": "string",
         "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
-      }]
-      
+      }
+
       Resume text:
       ${resumeText}
     `;
@@ -86,9 +129,8 @@ export class AiService {
       const response = await result.response;
       return JSON.parse(response.text());
     } catch (error: unknown) {
-      // Normalizing 'unknown' error to 'Error' for safe property access
       const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to generate questions', err.stack);
+      this.logger.error('Failed to generate first question from resume', err.stack);
       throw new InternalServerErrorException('AI Question generation failed');
     }
   }

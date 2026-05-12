@@ -20,16 +20,13 @@ export class InterviewController {
   async startInterview(@Body('jobRole') jobRole: string) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
 
-    // 1. Generate questions via Gemini
-    const generatedQuestions = await this.aiService.generateQuestionsForRole(jobRole);
-
-    // 2. Save interview + questions to DB
-    const { interview, questions: savedQuestions } =
-      await this.interviewService.createInterview(jobRole, generatedQuestions);
+    const firstQuestion = await this.aiService.generateQuestionsForRole(jobRole);
+    const { interview, question } =
+      await this.interviewService.createInterview(jobRole, firstQuestion);
 
     return {
       interviewId: interview.id,
-      questions: savedQuestions,
+      question,
     };
   }
 
@@ -53,12 +50,24 @@ export class InterviewController {
   @Post('create')
   createInterview(
     @Body('jobRole') jobRole: string,
-    @Body('questions') generatedQuestions: any[],
+    @Body('question') firstQuestion: any,
   ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
-    if (!generatedQuestions?.length)
-      throw new BadRequestException('questions array is required');
-    return this.interviewService.createInterview(jobRole, generatedQuestions);
+    if (!firstQuestion) throw new BadRequestException('question object is required');
+    return this.interviewService.createInterview(jobRole, firstQuestion);
+  }
+
+  /**
+   * POST /interview/:id/next-question
+   * Body: { history: [{question, answer}][] }
+   * Generates the next adaptive question based on the conversation so far.
+   */
+  @Post(':id/next-question')
+  getNextQuestion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('history') history: Array<{ question: string; answer: string }>,
+  ) {
+    return this.interviewService.addNextQuestion(id, history ?? []);
   }
 
   /**

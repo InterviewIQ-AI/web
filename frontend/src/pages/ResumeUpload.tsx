@@ -80,12 +80,12 @@ export default function ResumeUpload() {
 
       const data = await res.json() as {
         interviewId: number;
-        questions: Question[];
+        question: Question;
       };
 
-      // Navigate to the interview room with the generated questions
+      // Navigate to the interview room with the first generated question
       navigate(`/interview/${data.interviewId}`, {
-        state: { interviewId: data.interviewId, questions: data.questions },
+        state: { interviewId: data.interviewId, question: data.question },
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Something went wrong';
@@ -120,7 +120,7 @@ export default function ResumeUpload() {
             Upload Your Resume
           </h2>
           <p className="text-gray-500 text-sm mt-2 text-center">
-            AI will analyse your resume and generate 5 tailored interview questions.
+            AI will analyse your resume and generate adaptive interview questions.
           </p>
         </div>
 
