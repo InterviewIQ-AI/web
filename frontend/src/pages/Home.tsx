@@ -26,7 +26,7 @@ export default function Home() {
         
         <div className="flex gap-6 justify-center">
           <Link
-            to="/dashboard"
+            to="/resume"
             className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-medium transition-all hover:scale-105 shadow-[0_0_20px_rgba(147,51,234,0.3)]"
           >
             <Upload size={20} />

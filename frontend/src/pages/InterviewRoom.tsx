@@ -1,10 +1,27 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// ─── Cross-browser MIME type detection ───────────────────────────────────────
+// MediaRecorder support varies: Chrome/Edge prefer audio/webm;codecs=opus,
+// Firefox supports audio/ogg;codecs=opus, Safari may only support audio/mp4.
+function getSupportedMimeType(): string {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+  ];
+  for (const type of candidates) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  // Final fallback – let the browser decide
+  return '';
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Question {
@@ -50,17 +67,27 @@ export default function InterviewRoom() {
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  // Tracks whether the current answer was produced via voice (set when recording starts)
+  const isVoiceAnswerRef = useRef(false);
+  // Stores the MIME type negotiated with the browser so FormData sends the right type
+  const mimeTypeRef = useRef<string>('audio/webm');
 
   const currentQuestion: Question | undefined = questions[currentIdx];
   const totalQuestions = questions.length;
   const isLastQuestion = currentIdx === totalQuestions - 1;
 
-  // Reset timer + clear state when question changes
+  // Reset timer + clear state when question changes; also cancel any ongoing speech
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
     setStartTime(Date.now());
+    window.speechSynthesis.cancel();
   }, [currentIdx]);
+
+  // Cancel speech on unmount to avoid it continuing after navigation
+  useEffect(() => {
+    return () => { window.speechSynthesis.cancel(); };
+  }, []);
 
   // Camera Setup
   useEffect(() => {
@@ -87,32 +114,59 @@ export default function InterviewRoom() {
 
   // ─── Voice Recording ────────────────────────────────────────────────────
   const toggleRecording = async () => {
+    // ── Stop branch ──
     if (isRecording) {
+      // stop() triggers onstop asynchronously; state is updated there
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
       return;
     }
 
+    // ── Start branch ──
     setErrorMsg('');
     audioChunksRef.current = [];
+
     try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // Hints for better voice quality
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000,
+        },
+      });
+
+      // Pick the best MIME type this browser actually supports
+      const mimeType = getSupportedMimeType();
+      mimeTypeRef.current = mimeType || 'audio/webm'; // store for FormData
+
+      const recorderOptions = mimeType ? { mimeType } : {};
+      const recorder = new MediaRecorder(audioStream, recorderOptions);
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
+
       recorder.onstop = async () => {
+        // Stop all tracks so the mic indicator disappears immediately
         audioStream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+
+        const blob = new Blob(audioChunksRef.current, {
+          type: mimeTypeRef.current,
+        });
         await transcribeAudio(blob);
       };
 
       mediaRecorderRef.current = recorder;
-      recorder.start();
+      // timeslice = 250 ms — ensures ondataavailable fires even for short recordings
+      recorder.start(250);
+      isVoiceAnswerRef.current = true;
       setIsRecording(true);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Microphone access denied.';
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Microphone access denied. Please check browser permissions.';
       setErrorMsg(msg);
     }
   };
@@ -121,28 +175,98 @@ export default function InterviewRoom() {
     setIsTranscribing(true);
     try {
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+
+      // Derive a sensible filename extension from the actual MIME type so that
+      // the backend (Multer / Gemini) can infer the format correctly.
+      const ext = mimeTypeRef.current.includes('ogg')
+        ? 'ogg'
+        : mimeTypeRef.current.includes('mp4')
+          ? 'mp4'
+          : 'webm';
+
+      // The field name 'audio' matches the FileInterceptor('audio') on the backend
+      formData.append('audio', audioBlob, `recording.${ext}`);
 
       const res = await fetch('/api/ai/transcribe', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Transcription failed on server');
+
+      if (!res.ok) {
+        // Attempt to surface the server's error message if available
+        let serverMsg = 'Transcription failed on server';
+        try {
+          const errBody = await res.json() as { message?: string };
+          if (errBody.message) serverMsg = errBody.message;
+        } catch { /* ignore parse errors */ }
+        throw new Error(serverMsg);
+      }
 
       const data = await res.json() as { transcript: string };
-      setAnswer((prev) => (prev ? prev + ' ' + data.transcript : data.transcript));
+      const transcript = data.transcript?.trim();
+
+      if (transcript) {
+        // Append with a space when there's existing text, otherwise replace
+        setAnswer((prev) =>
+          prev.trim() ? `${prev.trim()} ${transcript}` : transcript,
+        );
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      setErrorMsg('Failed to transcribe: ' + msg);
+      const msg = err instanceof Error ? err.message : 'Unknown transcription error';
+      setErrorMsg('Transcription failed: ' + msg);
     } finally {
       setIsTranscribing(false);
     }
   };
 
-  const speakQuestion = () => {
-    if (!currentQuestion) return;
+  // ─── Speech Synthesis ────────────────────────────────────────────────────
+  // Wrapped in useCallback so its identity stays stable across renders.
+  const speakQuestion = useCallback(() => {
+    if (!currentQuestion || !window.speechSynthesis) return;
+
+    // Cancel any speech that is currently playing before starting a new one
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(currentQuestion.questionText);
-    u.rate = 0.9;
-    window.speechSynthesis.speak(u);
-  };
+
+    const utterance = new SpeechSynthesisUtterance(currentQuestion.questionText);
+
+    // Voice selection: prefer a natural-sounding English voice when available.
+    // The voices list loads asynchronously on some browsers, so we re-check
+    // after the onvoiceschanged event fires if the list is still empty.
+    const applyVoice = (u: SpeechSynthesisUtterance) => {
+      const voices = window.speechSynthesis.getVoices();
+      // Preference order: Google US → any en-US → any English
+      const preferred =
+        voices.find((v) => v.name.toLowerCase().includes('google') && v.lang.startsWith('en')) ??
+        voices.find((v) => v.lang === 'en-US') ??
+        voices.find((v) => v.lang.startsWith('en')) ??
+        null;
+      if (preferred) u.voice = preferred;
+    };
+
+    applyVoice(utterance);
+
+    // Safari & Firefox may not have voices ready on first call
+    if (!utterance.voice && window.speechSynthesis.getVoices().length === 0) {
+      const onVoicesReady = () => {
+        applyVoice(utterance);
+        window.speechSynthesis.removeEventListener('voiceschanged', onVoicesReady);
+        window.speechSynthesis.speak(utterance);
+      };
+      window.speechSynthesis.addEventListener('voiceschanged', onVoicesReady);
+      return; // speak() will be called inside the listener
+    }
+
+    utterance.rate = 0.88;   // Slightly slower than default for clarity
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Silent error handler — avoids unhandled-rejection noise in the console
+    utterance.onerror = (e) => {
+      // 'interrupted' fires whenever cancel() is called; not a real error
+      if (e.error !== 'interrupted') {
+        console.warn('SpeechSynthesis error:', e.error);
+      }
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [currentQuestion]);
 
   // ─── Submit Answer → Save to DB ─────────────────────────────────────────
   const submitAnswer = async () => {
@@ -159,16 +283,27 @@ export default function InterviewRoom() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionId: currentQuestion.id,
-          userAnswer: answer,
-          isVoice: audioChunksRef.current.length > 0,
+          userAnswer: answer.trim(),
+          // Use the dedicated ref — audioChunksRef.current may already be cleared
+          // by the time this runs after a transcription cycle.
+          isVoice: isVoiceAnswerRef.current,
           timeTakenSeconds,
         }),
       });
 
-      if (!res.ok) throw new Error('Failed to save answer');
+      if (!res.ok) {
+        let serverMsg = 'Failed to save answer';
+        try {
+          const errBody = await res.json() as { message?: string };
+          if (errBody.message) serverMsg = errBody.message;
+        } catch { /* ignore */ }
+        throw new Error(serverMsg);
+      }
 
       const data = await res.json() as { evaluation: Evaluation };
       setEvaluation(data.evaluation);
+      // Reset voice flag for next question
+      isVoiceAnswerRef.current = false;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setErrorMsg('Could not save answer: ' + msg);
