@@ -181,15 +181,18 @@ export default function InterviewRoom() {
     }
   };
 
-  // ─── Speech Synthesis ─────────────────────────────────────────────────────
+  // ─── Speech Synthesis (humanized) ────────────────────────────────────────
   const speakQuestion = useCallback(() => {
     if (!currentQuestion || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(currentQuestion.questionText);
     const applyVoice = (u: SpeechSynthesisUtterance) => {
       const voices = window.speechSynthesis.getVoices();
       const preferred =
+        // Prefer Indian English (en-IN)
+        voices.find((v) => v.lang === 'en-IN' && v.name.toLowerCase().includes('google')) ??
+        voices.find((v) => v.lang === 'en-IN') ??
+        // Fallbacks
         voices.find((v) => v.name.toLowerCase().includes('google') && v.lang.startsWith('en')) ??
         voices.find((v) => v.lang === 'en-US') ??
         voices.find((v) => v.lang.startsWith('en')) ??
@@ -197,25 +200,61 @@ export default function InterviewRoom() {
       if (preferred) u.voice = preferred;
     };
 
-    applyVoice(utterance);
-    if (!utterance.voice && window.speechSynthesis.getVoices().length === 0) {
+    const silentHandler = (e: SpeechSynthesisErrorEvent) => {
+      if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
+    };
+
+    // Rotate natural intros per question; Q1 gets a warm welcome
+    const intros = [
+      'Alright.',
+      'Good.',
+      "Here's the next one.",
+      'Moving on.',
+      'Okay, so.',
+      'Let me ask you this.',
+      'Great. Next question.',
+    ];
+    const introText =
+      questionNumber === 1
+        ? 'Hello, welcome to your interview. Here is your first question.'
+        : intros[(questionNumber - 1) % intros.length];
+
+    // Intro: slightly upbeat, faster
+    const introU = new SpeechSynthesisUtterance(introText);
+    applyVoice(introU);
+    introU.rate = 0.92;
+    introU.pitch = 1.08;
+    introU.volume = 1.0;
+    introU.onerror = silentHandler;
+
+    // Question: slower, lower pitch — authoritative interviewer tone
+    const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
+    applyVoice(questionU);
+    questionU.rate = 0.82;
+    questionU.pitch = 0.95;
+    questionU.volume = 1.0;
+    questionU.onerror = silentHandler;
+
+    // Chain: intro finishes → then speak question
+    introU.onend = () => { window.speechSynthesis.speak(questionU); };
+
+    const startSpeaking = () => {
+      applyVoice(introU);
+      applyVoice(questionU);
+      window.speechSynthesis.speak(introU);
+    };
+
+    if (window.speechSynthesis.getVoices().length === 0) {
       const onVoicesReady = () => {
-        applyVoice(utterance);
         window.speechSynthesis.removeEventListener('voiceschanged', onVoicesReady);
-        window.speechSynthesis.speak(utterance);
+        startSpeaking();
       };
       window.speechSynthesis.addEventListener('voiceschanged', onVoicesReady);
       return;
     }
 
-    utterance.rate = 0.88;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    utterance.onerror = (e) => {
-      if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
-    };
-    window.speechSynthesis.speak(utterance);
-  }, [currentQuestion]);
+    startSpeaking();
+  }, [currentQuestion, questionNumber]);
 
   // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async () => {
