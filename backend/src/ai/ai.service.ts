@@ -32,13 +32,21 @@ export class AiService {
     });
 
     const prompt = `
-      You are an expert technical interviewer. Generate the FIRST interview question
-      for a candidate applying for the role: "${jobRole}".
-      Make it a strong opening question covering a core technical or behavioral topic.
+      You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
+      
+      A realistic interview flows through these progressive phases:
+      1. Introduction & Background
+      2. Career Objective & Education
+      3. Projects & Past Experience
+      4. Deep Technical Knowledge (Core focus)
+      5. HR / Managerial Scenarios (MR)
+      6. Achievements & Wrap-up
+
+      Generate the very FIRST interview question. It must be an "Introduction" question (e.g., "Please introduce yourself and walk me through your background").
       Return a single JSON object (not an array) with this exact schema:
       {
         "questionText": "string",
-        "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
+        "category": "HR",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
       }
@@ -69,20 +77,30 @@ export class AiService {
       .join('\n\n');
 
     const prompt = `
-      You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
+      You are an expert interviewer conducting an interview for the role: "${jobRole}".
+      
+      A realistic interview flows through these progressive phases:
+      1. Introduction & Background
+      2. Career Objective & Education
+      3. Projects & Past Experience
+      4. Deep Technical Knowledge (Core focus)
+      5. HR / Managerial Scenarios (MR)
+      6. Achievements & Wrap-up
 
-      Previous questions and answers:
+      Previous conversation history:
       ${historyText}
 
-      Based on the candidate's responses, generate the NEXT most relevant interview question.
-      - Build on gaps or interesting points from previous answers
-      - Cover a different aspect than already asked
-      - Vary between TECHNICAL, SYSTEM_DESIGN, and BEHAVIORAL categories
+      Based on the history, determine the current phase of the interview and generate the NEXT most relevant question.
+      Rules:
+      - Progress naturally through the phases. Do not jump straight to technical if they haven't discussed their background.
+      - Ask MULTIPLE questions per phase if needed, but spend the VAST MAJORITY of the interview on Technical, HR, and MR scenarios.
+      - Ensure the interview feels like a real, conversational flow. Build on their previous answers.
+      - The category MUST be exactly one of: TECHNICAL | HR | MR
 
       Return a single JSON object (not an array):
       {
         "questionText": "string",
-        "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
+        "category": "TECHNICAL | HR | MR",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
       }
@@ -111,11 +129,12 @@ export class AiService {
 
     const prompt = `
       You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
-      generate the FIRST interview question. Make it a strong opener that dives into a key skill from the resume.
+      generate the very FIRST interview question. 
+      It must be an "Introduction" question that asks them to introduce themselves while highlighting a key aspect of their resume.
       Return a single JSON object (not an array):
       {
         "questionText": "string",
-        "category": "TECHNICAL | SYSTEM_DESIGN | BEHAVIORAL",
+        "category": "HR",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
       }
