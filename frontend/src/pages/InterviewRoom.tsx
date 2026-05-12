@@ -32,6 +32,7 @@ interface Question {
 interface LocationState {
   interviewId: number;
   question: Question;
+  totalQuestions: number;
 }
 
 interface Evaluation {
@@ -52,6 +53,7 @@ export default function InterviewRoom() {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(
     state?.question ?? null,
   );
+  const totalQuestions = state?.totalQuestions ?? 10;
   const [questionNumber, setQuestionNumber] = useState(1);
   const [answer, setAnswer] = useState('');
   const [cameraOn, setCameraOn] = useState(true);
@@ -406,7 +408,7 @@ export default function InterviewRoom() {
           <div className="space-y-4 text-sm text-gray-400">
             <div className="flex justify-between items-center">
               <span>Question</span>
-              <span className="font-medium text-purple-400">#{questionNumber}</span>
+              <span className="font-medium text-purple-400">{questionNumber} of {totalQuestions}</span>
             </div>
             {interviewId && (
               <div className="flex justify-between items-center">
@@ -580,31 +582,47 @@ export default function InterviewRoom() {
               {evaluation.idealAnswerComparison}
             </div>
 
-            {/* Next Question + End Interview buttons */}
+            {/* Next Question / End Interview buttons */}
             <div className="flex gap-3 pt-1">
-              <button
-                onClick={handleNextQuestion}
-                disabled={isFetchingNext || isEnding}
-                className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all"
-              >
-                {isFetchingNext ? (
-                  <><Loader2 size={18} className="animate-spin" /><span>Generating Next Question…</span></>
-                ) : (
-                  <><span>Next Question</span><ArrowRight size={18} /></>
-                )}
-              </button>
+              {questionNumber < totalQuestions ? (
+                <button
+                  onClick={handleNextQuestion}
+                  disabled={isFetchingNext || isEnding}
+                  className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all"
+                >
+                  {isFetchingNext ? (
+                    <><Loader2 size={18} className="animate-spin" /><span>Generating Next Question…</span></>
+                  ) : (
+                    <><span>Next Question</span><ArrowRight size={18} /></>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleEndInterview}
+                  disabled={isEnding}
+                  className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+                >
+                  {isEnding ? (
+                    <><Loader2 size={18} className="animate-spin" /><span>Evaluating Final Score…</span></>
+                  ) : (
+                    <><span>Finish Interview &amp; Get Results</span><CheckCircle size={18} /></>
+                  )}
+                </button>
+              )}
 
-              <button
-                onClick={handleEndInterview}
-                disabled={isFetchingNext || isEnding}
-                className="flex items-center gap-2 bg-gray-800 hover:bg-red-500/20 hover:border-red-500/50 border border-gray-700 text-gray-400 hover:text-red-400 px-5 py-3 rounded-xl transition-all font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isEnding ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <><LogOut size={18} /><span>End Interview</span></>
-                )}
-              </button>
+              {questionNumber < totalQuestions && (
+                <button
+                  onClick={handleEndInterview}
+                  disabled={isFetchingNext || isEnding}
+                  className="flex items-center gap-2 bg-gray-800 hover:bg-red-500/20 hover:border-red-500/50 border border-gray-700 text-gray-400 hover:text-red-400 px-5 py-3 rounded-xl transition-all font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isEnding ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <><LogOut size={18} /><span>Exit Early</span></>
+                  )}
+                </button>
+              )}
             </div>
           </motion.div>
         )}

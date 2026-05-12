@@ -14,6 +14,7 @@ interface Question {
 interface StartResponse {
   interviewId: number;
   question: Question;
+  totalQuestions: number;
 }
 
 export default function Dashboard() {
@@ -42,9 +43,13 @@ export default function Dashboard() {
 
       const data = await res.json() as StartResponse;
 
-      // Navigate to interview room with first question
+      // Navigate to interview room with first question and total questions count
       navigate(`/interview/${data.interviewId}`, {
-        state: { interviewId: data.interviewId, question: data.question },
+        state: { 
+          interviewId: data.interviewId, 
+          question: data.question,
+          totalQuestions: data.totalQuestions
+        },
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
@@ -79,7 +84,7 @@ export default function Dashboard() {
             Start Your Interview
           </h2>
           <p className="text-gray-500 text-sm mt-2 text-center">
-            AI will ask you unlimited adaptive questions until you end the interview.
+            AI will ask 10-20 adaptive questions before providing your final evaluation.
           </p>
         </div>
 

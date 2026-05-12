@@ -58,6 +58,7 @@ export class ResumeService {
       message: 'Resume processed successfully',
       interviewId: interview.id,
       question: savedQuestion, // single first question for the interview room
+      totalQuestions: Math.floor(Math.random() * 11) + 10,
     };
   }
 }

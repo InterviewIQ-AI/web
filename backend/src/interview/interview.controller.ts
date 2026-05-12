@@ -24,9 +24,12 @@ export class InterviewController {
     const { interview, question } =
       await this.interviewService.createInterview(jobRole, firstQuestion);
 
+    const totalQuestions = Math.floor(Math.random() * 11) + 10; // 10 to 20
+
     return {
       interviewId: interview.id,
       question,
+      totalQuestions,
     };
   }
 
@@ -48,13 +51,19 @@ export class InterviewController {
    * Called after resume is processed — saves the interview + questions to DB.
    */
   @Post('create')
-  createInterview(
+  async createInterview(
     @Body('jobRole') jobRole: string,
     @Body('question') firstQuestion: any,
   ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
     if (!firstQuestion) throw new BadRequestException('question object is required');
-    return this.interviewService.createInterview(jobRole, firstQuestion);
+    
+    const result = await this.interviewService.createInterview(jobRole, firstQuestion);
+    
+    return {
+      ...result,
+      totalQuestions: Math.floor(Math.random() * 11) + 10,
+    };
   }
 
   /**
