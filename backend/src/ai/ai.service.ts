@@ -27,7 +27,7 @@ export class AiService {
 
   async generateQuestionsForRole(jobRole: string): Promise<any> {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -60,7 +60,7 @@ export class AiService {
     history: Array<{ question: string; answer: string }>,
   ): Promise<any> {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -105,7 +105,7 @@ export class AiService {
   ): Promise<any> {
     // Using gemini-2.5-flash for complex reasoning tasks
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -141,7 +141,7 @@ export class AiService {
     answer: string,
   ): Promise<any> {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       generationConfig: { responseMimeType: 'application/json' },
     });
 
@@ -179,7 +179,7 @@ export class AiService {
   ): Promise<string> {
     // Using gemini-2.5-flash-lite for faster, cost-effective transcription
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-flash-latest',
     });
 
     try {
