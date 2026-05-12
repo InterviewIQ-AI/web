@@ -1,5 +1,5 @@
-import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { Injectable, Inject, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { eq, desc } from 'drizzle-orm';
 import { DRIZZLE } from '../database/database.module';
 import { interviews, questions, answers } from '../database/schema';
 import { AiService } from '../ai/ai.service';
@@ -119,6 +119,14 @@ export class InterviewService {
   }
 
   async completeInterview(interviewId: number) {
+    // Guard: make sure the interview actually exists before touching it
+    const existing = await this.db.query.interviews.findFirst({
+      where: eq(interviews.id, interviewId),
+    });
+    if (!existing) {
+      throw new NotFoundException(`Interview ${interviewId} not found`);
+    }
+
     // Calculate final score from all answers
     const interviewQuestions = await this.db.query.questions.findMany({
       where: eq(questions.interviewId, interviewId),
@@ -154,12 +162,22 @@ export class InterviewService {
       .where(eq(interviews.id, interviewId))
       .returning();
 
+    if (!updatedInterview) {
+      throw new InternalServerErrorException(
+        `Failed to mark interview ${interviewId} as completed`,
+      );
+    }
+
+    this.logger.log(
+      `Interview #${interviewId} completed. Final score: ${finalScore}/10`,
+    );
+
     return { interview: updatedInterview, finalScore, feedbackSummary };
   }
 
   async getAllInterviews() {
     return this.db.query.interviews.findMany({
-      orderBy: (interviews: any, { desc }: any) => [desc(interviews.createdAt)],
+      orderBy: [desc(interviews.createdAt)],
     });
   }
 }
