@@ -67,6 +67,12 @@ export default function InterviewRoom() {
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
 
+  // ─── Voice Settings ───
+  const [showSettings, setShowSettings] = useState(false);
+  const [voiceRate, setVoiceRate] = useState(0.85);
+  const [voicePitch, setVoicePitch] = useState(0.9);
+  const [autoRead, setAutoRead] = useState(true);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -75,6 +81,9 @@ export default function InterviewRoom() {
   const mimeTypeRef = useRef<string>('audio/webm');
   // Stores all answered Q&As for adaptive follow-up generation
   const answeredHistoryRef = useRef<Array<{ question: string; answer: string }>>([]);
+
+  const isSubmittingRef = useRef(false);
+  const evaluationRef = useRef<Evaluation | null>(null);
 
   // Reset answer/evaluation when moving to a new question
   useEffect(() => {
@@ -220,11 +229,11 @@ export default function InterviewRoom() {
       if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
     };
 
-    // Question: slower, lower pitch — authoritative interviewer tone
+    // Question: custom rate/pitch from settings
     const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
     applyVoice(questionU);
-    questionU.rate = 0.82;
-    questionU.pitch = 0.95;
+    questionU.rate = voiceRate;
+    questionU.pitch = voicePitch;
     questionU.volume = 1.0;
     questionU.onerror = silentHandler;
 
@@ -246,15 +255,16 @@ export default function InterviewRoom() {
     }
 
     startSpeaking();
-  }, [currentQuestion, startContinuousListening]);
+  }, [currentQuestion, startContinuousListening, voiceRate, voicePitch]);
 
   // Automatically speak the question after a 2-second delay when it appears
   useEffect(() => {
+    if (!autoRead) return;
     const timer = setTimeout(() => {
       speakQuestion();
     }, 2000);
     return () => clearTimeout(timer);
-  }, [speakQuestion]);
+  }, [speakQuestion, autoRead]);
 
   // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async () => {
@@ -371,6 +381,110 @@ export default function InterviewRoom() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row gap-6 p-6 bg-[#0a0a0f]">
 
+      {/* ── Settings Modal ── */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-[2rem] p-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Briefcase size={22} className="text-purple-400" />
+                  Voice Settings
+                </h3>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="text-gray-500 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                {/* Auto Read Toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-gray-200">Auto-read Questions</p>
+                    <p className="text-xs text-gray-500">AI will speak as soon as the question appears.</p>
+                  </div>
+                  <button 
+                    onClick={() => setAutoRead(!autoRead)}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${autoRead ? 'bg-purple-600' : 'bg-gray-800'}`}
+                  >
+                    <motion.div 
+                      animate={{ x: autoRead ? 26 : 4 }}
+                      className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                    />
+                  </button>
+                </div>
+
+                {/* Voice Rate */}
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm font-bold text-gray-200">Speaking Speed</p>
+                    <span className="text-xs font-mono text-purple-400">{voiceRate.toFixed(2)}x</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="1.5" 
+                    step="0.05"
+                    value={voiceRate}
+                    onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
+                    className="w-full accent-purple-500 bg-gray-800 rounded-lg h-1.5 appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-widest">
+                    <span>Slow</span>
+                    <span>Fast</span>
+                  </div>
+                </div>
+
+                {/* Voice Pitch */}
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm font-bold text-gray-200">Voice Pitch</p>
+                    <span className="text-xs font-mono text-purple-400">{voicePitch.toFixed(2)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="1.5" 
+                    step="0.05"
+                    value={voicePitch}
+                    onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
+                    className="w-full accent-purple-500 bg-gray-800 rounded-lg h-1.5 appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-widest">
+                    <span>Deep</span>
+                    <span>High</span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  speakQuestion();
+                  setShowSettings(false);
+                }}
+                className="w-full mt-10 bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2"
+              >
+                <Volume2 size={20} />
+                Test Voice & Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Left Panel ── */}
       <div className="w-full md:w-1/3 flex flex-col gap-4">
         {errorMsg && (
@@ -401,12 +515,21 @@ export default function InterviewRoom() {
               <span>Camera Disabled</span>
             </div>
           )}
-          <button
-            onClick={() => setCameraOn(!cameraOn)}
-            className="absolute bottom-4 right-4 bg-gray-900/80 hover:bg-gray-700 text-white p-3 rounded-full backdrop-blur-md transition-colors z-10"
-          >
-            {cameraOn ? <Camera size={20} /> : <CameraOff size={20} />}
-          </button>
+          <div className="absolute bottom-4 right-4 flex gap-2">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="bg-gray-900/80 hover:bg-gray-700 text-white p-3 rounded-full backdrop-blur-md transition-colors z-10"
+              title="Voice Settings"
+            >
+              <Briefcase size={20} />
+            </button>
+            <button
+              onClick={() => setCameraOn(!cameraOn)}
+              className="bg-gray-900/80 hover:bg-gray-700 text-white p-3 rounded-full backdrop-blur-md transition-colors z-10"
+            >
+              {cameraOn ? <Camera size={20} /> : <CameraOff size={20} />}
+            </button>
+          </div>
         </div>
 
         {/* Status */}
@@ -478,7 +601,6 @@ export default function InterviewRoom() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Answer Area — hidden after evaluation */}
         {/* Answer Area — hidden after evaluation */}
         {!evaluation ? (
           <div className="flex-1 flex flex-col gap-6">
