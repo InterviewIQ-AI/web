@@ -49,12 +49,14 @@ export default function InterviewRoom() {
   const navigate = useNavigate();
   const state = location.state as LocationState | null;
 
-  const interviewId = state?.interviewId ?? null;
+  const [interviewId, setInterviewId] = useState<number | null>(
+    state?.interviewId ?? (localStorage.getItem('active_interview_id') ? parseInt(localStorage.getItem('active_interview_id')!) : null)
+  );
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(
-    state?.question ?? null,
+    state?.question ?? null
   );
-  const totalQuestions = state?.totalQuestions ?? 10;
+  const [totalQuestions, setTotalQuestions] = useState(state?.totalQuestions ?? 10);
   const [questionNumber, setQuestionNumber] = useState(1);
   const [answer, setAnswer] = useState('');
   const [cameraOn, setCameraOn] = useState(true);
@@ -72,6 +74,47 @@ export default function InterviewRoom() {
   const [voiceRate, setVoiceRate] = useState(0.85);
   const [voicePitch, setVoicePitch] = useState(0.9);
   const [autoRead, setAutoRead] = useState(true);
+
+  // ─── Persistence ───
+  useEffect(() => {
+    if (!interviewId) return;
+    const saveState = () => {
+      const stateToSave = {
+        interviewId,
+        currentQuestion,
+        questionNumber,
+        history: answeredHistoryRef.current,
+        totalQuestions,
+        voiceSettings: { voiceRate, voicePitch, autoRead },
+      };
+      localStorage.setItem(`interview_state_${interviewId}`, JSON.stringify(stateToSave));
+      localStorage.setItem('active_interview_id', String(interviewId));
+    };
+    saveState();
+  }, [interviewId, currentQuestion, questionNumber, voiceRate, voicePitch, autoRead, totalQuestions]);
+
+  // Load state on mount if not provided by location
+  useEffect(() => {
+    if (!state) {
+      const activeId = localStorage.getItem('active_interview_id');
+      if (activeId) {
+        const saved = localStorage.getItem(`interview_state_${activeId}`);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setCurrentQuestion(parsed.currentQuestion);
+            setQuestionNumber(parsed.questionNumber);
+            answeredHistoryRef.current = parsed.history;
+            setVoiceRate(parsed.voiceSettings.voiceRate);
+            setVoicePitch(parsed.voiceSettings.voicePitch);
+            setAutoRead(parsed.voiceSettings.autoRead);
+          } catch (e) {
+            console.error('Failed to restore interview state', e);
+          }
+        }
+      }
+    }
+  }, [state]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -343,6 +386,8 @@ export default function InterviewRoom() {
     try {
       if (interviewId) {
         await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
+        localStorage.removeItem(`interview_state_${interviewId}`);
+        localStorage.removeItem('active_interview_id');
         navigate(`/results/${interviewId}`);
       } else {
         navigate('/');
