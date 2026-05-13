@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import InterviewRoom from './pages/InterviewRoom';
 import Dashboard from './pages/Dashboard';
 import ResumeUpload from './pages/ResumeUpload';
+import Results from './pages/Results';
 import Navbar from './components/Navbar';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
             <Route path="/resume" element={<ResumeUpload />} />
             <Route path="/interview/:id" element={<InterviewRoom />} />
             <Route path="/interview" element={<InterviewRoom />} />
+            <Route path="/results/:id" element={<Results />} />
           </Routes>
         </div>
       </div>

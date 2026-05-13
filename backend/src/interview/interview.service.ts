@@ -68,7 +68,11 @@ export class InterviewService {
   async getInterview(interviewId: number) {
     const interview = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
-      with: { questions: true },
+      with: {
+        questions: {
+          with: { answers: true },
+        },
+      },
     });
 
     if (!interview) {

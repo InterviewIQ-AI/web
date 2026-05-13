@@ -333,9 +333,13 @@ export default function InterviewRoom() {
     try {
       if (interviewId) {
         await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
+        navigate(`/results/${interviewId}`);
+      } else {
+        navigate('/');
       }
-    } catch { /* best-effort */ }
-    navigate('/');
+    } catch { 
+      navigate('/');
+    }
   };
 
   // ─── Guard ────────────────────────────────────────────────────────────────
