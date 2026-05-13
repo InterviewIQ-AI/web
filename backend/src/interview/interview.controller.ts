@@ -90,6 +90,8 @@ export class InterviewController {
     @Body('userAnswer') userAnswer: string,
     @Body('isVoice') isVoice: boolean,
     @Body('timeTakenSeconds') timeTakenSeconds: number,
+    @Body('history') history: Array<{ question: string; answer: string }>,
+    @Body('snapshots') snapshots: string[],
   ) {
     if (!questionId) throw new BadRequestException('questionId is required');
     if (!userAnswer) throw new BadRequestException('userAnswer is required');
@@ -98,6 +100,8 @@ export class InterviewController {
       userAnswer,
       isVoice ?? false,
       timeTakenSeconds ?? 0,
+      history,
+      snapshots
     );
   }
 

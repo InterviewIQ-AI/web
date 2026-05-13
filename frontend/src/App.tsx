@@ -4,6 +4,7 @@ import InterviewRoom from './pages/InterviewRoom';
 import Dashboard from './pages/Dashboard';
 import ResumeUpload from './pages/ResumeUpload';
 import Results from './pages/Results';
+import History from './pages/History';
 import Navbar from './components/Navbar';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
             <Route path="/interview/:id" element={<InterviewRoom />} />
             <Route path="/interview" element={<InterviewRoom />} />
             <Route path="/results/:id" element={<Results />} />
+            <Route path="/history" element={<History />} />
           </Routes>
         </div>
       </div>

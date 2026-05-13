@@ -47,6 +47,7 @@ export const answers = pgTable('answers', {
   score: integer('score'),
   feedback: text('feedback'),
   missingConcepts: jsonb('missing_concepts').default([]),
+  behavioralFeedback: jsonb('behavioral_feedback'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

@@ -87,6 +87,8 @@ export class InterviewService {
     userAnswer: string,
     isVoice: boolean,
     timeTakenSeconds: number,
+    history?: Array<{ question: string; answer: string }>,
+    snapshots?: string[], // New field
   ) {
     // Get the question to evaluate against
     const question = await this.db.query.questions.findFirst({
@@ -97,29 +99,66 @@ export class InterviewService {
       throw new NotFoundException(`Question ${questionId} not found`);
     }
 
+    const interviewId = question.interviewId;
+    const interview = await this.db.query.interviews.findFirst({
+      where: eq(interviews.id, interviewId),
+    });
+
     const expectedConcepts = (question.expectedConcepts as string[]) ?? [];
 
-    // Evaluate with AI
-    const evaluation = await this.aiService.evaluateAnswer(
-      question.questionText,
-      expectedConcepts,
-      userAnswer,
-    );
-
-    const [answer] = await this.db
-      .insert(answers)
-      .values({
-        questionId,
+    // Parallel processing: Evaluation + Next Question
+    const [evaluation, nextQ] = await Promise.all([
+      this.aiService.evaluateAnswer(
+        question.questionText,
+        expectedConcepts,
         userAnswer,
-        isVoice,
-        timeTakenSeconds,
-        score: evaluation.score,
-        feedback: evaluation.feedback,
-        missingConcepts: evaluation.missingConcepts ?? [],
-      })
-      .returning();
+        snapshots,
+      ),
+      history && interview 
+        ? this.aiService.generateNextQuestion(interview.jobRole, history)
+        : Promise.resolve(null)
+    ]);
 
-    return { answer, evaluation };
+    // Save answer with safety guards
+    try {
+      const [answer] = await this.db
+        .insert(answers)
+        .values({
+          questionId,
+          userAnswer,
+          isVoice,
+          timeTakenSeconds,
+          score: evaluation?.score ?? 0,
+          feedback: evaluation?.feedback ?? 'Evaluation unavailable.',
+          missingConcepts: evaluation?.missingConcepts ?? [],
+          behavioralFeedback: evaluation?.behavioralFeedback ?? null,
+        })
+        .returning();
+
+      // If we generated a next question, save it
+      let savedNextQuestion = null;
+      if (nextQ) {
+        try {
+          [savedNextQuestion] = await this.db
+            .insert(questions)
+            .values({
+              interviewId,
+              questionText: nextQ.questionText,
+              category: nextQ.category,
+              difficulty: nextQ.difficulty ?? 3,
+              expectedConcepts: nextQ.expectedConcepts ?? [],
+            })
+            .returning();
+        } catch (nextQError) {
+          this.logger.error(`Failed to save pre-fetched question for interview ${interviewId}:`, nextQError);
+        }
+      }
+
+      return { answer, evaluation, nextQuestion: savedNextQuestion };
+    } catch (dbError) {
+      this.logger.error(`CRITICAL: Failed to save answer for question ${questionId}:`, dbError);
+      throw new InternalServerErrorException('Failed to persist interview data. Please check database connectivity.');
+    }
   }
 
   async completeInterview(interviewId: number) {
@@ -182,6 +221,9 @@ export class InterviewService {
   async getAllInterviews() {
     return this.db.query.interviews.findMany({
       orderBy: [desc(interviews.createdAt)],
+      with: {
+        questions: true,
+      }
     });
   }
 }

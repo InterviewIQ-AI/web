@@ -32,7 +32,8 @@ export class AiService {
    * Tries Flash first, then Pro if Flash fails (e.g. 404/Quota).
    */
   private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro'];
+    // Prioritize 1.5 Flash for maximum speed and stability
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
     let lastError: any = null;
 
     for (const modelName of modelsToTry) {
@@ -45,7 +46,7 @@ export class AiService {
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
-        
+
         if (useJson) {
           try {
             return JSON.parse(text);
@@ -58,6 +59,11 @@ export class AiService {
       } catch (error: any) {
         lastError = error;
         this.logger.warn(`Model ${modelName} failed: ${error.message}`);
+
+        // If it's a quota error, wait a tiny bit before trying the next model
+        if (error.message?.includes('429')) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
         continue;
       }
     }
@@ -158,22 +164,67 @@ export class AiService {
     question: string,
     expectedConcepts: string[],
     answer: string,
+    snapshots?: string[], // Base64 data URLs
   ): Promise<any> {
     const prompt = `
       You are an expert interviewer evaluating a candidate's answer.
+      
+      [CONTENT EVALUATION]
       Question: ${question}
-      Expected Concepts: ${expectedConcepts.join(', ')}
       Candidate's Answer: ${answer}
+      Expected Concepts: ${expectedConcepts.join(', ')}
 
-      Evaluate based on correctness, depth, and logic.
+      [BEHAVIORAL EVALUATION]
+      Attached are snapshots of the candidate during this answer.
+      Evaluate their Eye Contact, Posture, and Confidence/Expressions.
+      
+      [INSTRUCTIONS]
+      1. Score the answer content (0-10).
+      2. Provide EXTREMELY CONCISE feedback (max 2 sentences).
+      3. Identify missing concepts.
+      4. Provide specific behavioral feedback.
+
       Return JSON schema:
       {
         "score": number (0-10),
         "feedback": "string",
         "missingConcepts": ["string"],
-        "idealAnswerComparison": "string"
+        "behavioralFeedback": {
+          "eyeContact": "Excellent/Good/Poor - briefly why",
+          "posture": "string",
+          "confidence": "string",
+          "overall": "string"
+        }
       }
     `;
+
+    if (snapshots && snapshots.length > 0) {
+      // Multimodal request
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+      const imageParts = snapshots.map(s => {
+        const base64Data = s.split(',')[1];
+        const mimeType = s.split(',')[0].split(':')[1].split(';')[0];
+        return {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType
+          }
+        };
+      });
+
+      const result = await model.generateContent([prompt, ...imageParts]);
+      const response = await result.response;
+      let text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        this.logger.error('Failed to parse multimodal AI response', e);
+        // Fallback to basic text evaluation if multimodal fails
+        return this.generateWithFallback(prompt);
+      }
+    }
+
     return this.generateWithFallback(prompt);
   }
 

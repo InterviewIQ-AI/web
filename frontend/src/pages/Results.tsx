@@ -13,6 +13,12 @@ interface Answer {
   feedback: string;
   missingConcepts: string[];
   timeTakenSeconds: number;
+  behavioralFeedback?: {
+    eyeContact: string;
+    posture: string;
+    confidence: string;
+    overall: string;
+  };
 }
 
 interface Question {
@@ -286,6 +292,30 @@ export default function Results() {
                                   {c}
                                 </span>
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {answer?.behavioralFeedback && (
+                          <div className="bg-purple-500/5 border border-purple-500/10 p-5 rounded-2xl">
+                            <p className="text-[10px] font-bold text-purple-400 uppercase tracking-[0.2em] mb-4">Behavioral Analysis (Soft Skills)</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                              <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Eye Contact</p>
+                                <p className="text-sm text-gray-300">{answer.behavioralFeedback.eyeContact}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Posture</p>
+                                <p className="text-sm text-gray-300">{answer.behavioralFeedback.posture}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Confidence</p>
+                                <p className="text-sm text-gray-300">{answer.behavioralFeedback.confidence}</p>
+                              </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-purple-500/10">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Overall Body Language</p>
+                              <p className="text-sm text-gray-400 italic">"{answer.behavioralFeedback.overall}"</p>
                             </div>
                           </div>
                         )}

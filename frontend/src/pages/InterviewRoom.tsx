@@ -40,7 +40,12 @@ interface Evaluation {
   score: number;
   feedback: string;
   missingConcepts: string[];
-  idealAnswerComparison: string;
+  behavioralFeedback?: {
+    eyeContact: string;
+    posture: string;
+    confidence: string;
+    overall: string;
+  };
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -68,6 +73,9 @@ export default function InterviewRoom() {
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
+  const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
+  const [snapshots, setSnapshots] = useState<string[]>([]); // Base64 images
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ─── Voice Settings ───
   const [showSettings, setShowSettings] = useState(false);
@@ -247,7 +255,27 @@ export default function InterviewRoom() {
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [currentQuestion]);
+
+    // ── Behavioral Sampling: Capture snapshots every 7 seconds while recording ──
+    const captureInterval = setInterval(() => {
+      if (!videoRef.current || !canvasRef.current || !cameraOn) return;
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        setSnapshots(prev => [...prev.slice(-4), dataUrl]); // Keep last 5 snapshots
+      }
+    }, 7000);
+
+    return () => {
+      recognition.stop();
+      clearInterval(captureInterval);
+    };
+  }, [currentQuestion, cameraOn]);
 
   // ─── Speech Synthesis (humanized) ────────────────────────────────────────
   const speakQuestion = useCallback(() => {
@@ -300,23 +328,32 @@ export default function InterviewRoom() {
     startSpeaking();
   }, [currentQuestion, startContinuousListening, voiceRate, voicePitch]);
 
-  // Automatically speak the question after a 2-second delay when it appears
+  // Automatically speak the question immediately when it appears
   useEffect(() => {
-    if (!autoRead) return;
-    const timer = setTimeout(() => {
-      speakQuestion();
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [speakQuestion, autoRead]);
+    if (!autoRead || !currentQuestion) return;
+    speakQuestion();
+  }, [speakQuestion, autoRead, currentQuestion?.id]);
 
   // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async () => {
     if (!answer.trim() || !currentQuestion) return;
 
+    // Stop recording if active
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+    }
+
     setIsSubmitting(true);
     isSubmittingRef.current = true;
     setErrorMsg('');
     const timeTakenSeconds = Math.round((Date.now() - startTime) / 1000);
+
+    // Prepare history for pre-fetching next question in parallel
+    const updatedHistory = [
+      ...answeredHistoryRef.current,
+      { question: currentQuestion.questionText, answer: answer.trim() }
+    ];
 
     try {
       const res = await fetch('/api/interview/answer', {
@@ -327,8 +364,12 @@ export default function InterviewRoom() {
           userAnswer: answer.trim(),
           isVoice: isVoiceAnswerRef.current,
           timeTakenSeconds,
+          history: updatedHistory,
+          snapshots, // Send snapshots for behavioral analysis
         }),
       });
+
+      setSnapshots([]); // Clear snapshots after submission
 
       if (!res.ok) {
         let serverMsg = 'Failed to save answer';
@@ -339,15 +380,16 @@ export default function InterviewRoom() {
         throw new Error(serverMsg);
       }
 
-      const data = await res.json() as { evaluation: Evaluation };
+      const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null };
       setEvaluation(data.evaluation);
       evaluationRef.current = data.evaluation;
+      
+      // Update history reference IMMEDIATELY
+      answeredHistoryRef.current = updatedHistory;
 
-      // Push to history for adaptive follow-up generation
-      answeredHistoryRef.current.push({
-        question: currentQuestion.questionText,
-        answer: answer.trim(),
-      });
+      if (data.nextQuestion) {
+        setPreFetchedQuestion(data.nextQuestion);
+      }
       isVoiceAnswerRef.current = false;
       recognitionRef.current?.stop();
     } catch (err: unknown) {
@@ -360,6 +402,14 @@ export default function InterviewRoom() {
 
   // ─── Next Question (adaptive) ─────────────────────────────────────────────
   const handleNextQuestion = async () => {
+    // Use pre-fetched question if available for instant transition
+    if (preFetchedQuestion) {
+      setCurrentQuestion(preFetchedQuestion);
+      setQuestionNumber((n) => n + 1);
+      setPreFetchedQuestion(null);
+      return;
+    }
+
     setIsFetchingNext(true);
     setErrorMsg('');
     try {
@@ -683,7 +733,7 @@ export default function InterviewRoom() {
 
               <button
                 onClick={submitAnswer}
-                disabled={!answer.trim() || isSubmitting || isRecording}
+                disabled={!answer.trim() || isSubmitting}
                 className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-10 py-4 rounded-xl transition-all font-bold shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed transform active:scale-95 border border-purple-400/30"
               >
                 {isSubmitting ? (
@@ -795,6 +845,8 @@ export default function InterviewRoom() {
           </motion.div>
         )}
       </div>
+      {/* Hidden canvas for video sampling (Behavioral Analysis) */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
