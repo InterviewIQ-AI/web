@@ -19,18 +19,56 @@ export class AiService {
       this.logger.error(
         'GEMINI_API_KEY is missing! The AI features will fail.',
       );
+    } else {
+      this.logger.log(`Using API Key starting with: ${apiKey.substring(0, 7)}...`);
     }
 
     // Initializing the GoogleGenerativeAI client
     this.genAI = new GoogleGenerativeAI(apiKey || '');
   }
 
-  async generateQuestionsForRole(jobRole: string): Promise<any> {
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    });
+  /**
+   * Helper to generate content with fallback logic.
+   * Tries Flash first, then Pro if Flash fails (e.g. 404/Quota).
+   */
+  private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-pro'];
+    let lastError: any = null;
 
+    for (const modelName of modelsToTry) {
+      try {
+        const model = this.genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: useJson ? { responseMimeType: 'application/json' } : {},
+        });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        
+        if (useJson) {
+          try {
+            return JSON.parse(text);
+          } catch (e) {
+            this.logger.warn(`Failed to parse JSON from ${modelName}, text: ${text}`);
+            throw e;
+          }
+        }
+        return text;
+      } catch (error: any) {
+        lastError = error;
+        this.logger.warn(`Model ${modelName} failed: ${error.message}`);
+        continue;
+      }
+    }
+
+    this.logger.error('All models failed to generate content', lastError?.stack);
+    throw new InternalServerErrorException(
+      `AI generation failed: ${lastError?.message || 'Unknown error'}`,
+    );
+  }
+
+  async generateQuestionsForRole(jobRole: string): Promise<any> {
     const prompt = `
       You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
       
@@ -51,27 +89,13 @@ export class AiService {
         "difficulty": number (1-5)
       }
     `;
-
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return JSON.parse(response.text());
-    } catch (error: unknown) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to generate first question for role', err.stack);
-      throw new InternalServerErrorException('AI Question generation failed');
-    }
+    return this.generateWithFallback(prompt);
   }
 
   async generateNextQuestion(
     jobRole: string,
     history: Array<{ question: string; answer: string }>,
   ): Promise<any> {
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    });
-
     const historyText = history
       .map((h, i) => `Q${i + 1}: ${h.question}\nA${i + 1}: ${h.answer}`)
       .join('\n\n');
@@ -105,28 +129,13 @@ export class AiService {
         "difficulty": number (1-5)
       }
     `;
-
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return JSON.parse(response.text());
-    } catch (error: unknown) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to generate next question', err.stack);
-      throw new InternalServerErrorException('AI next question generation failed');
-    }
+    return this.generateWithFallback(prompt);
   }
 
   async generateQuestionsFromResume(
     resumeText: string,
     jobRole: string,
   ): Promise<any> {
-    // Using gemini-2.5-flash for complex reasoning tasks
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    });
-
     const prompt = `
       You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
       generate the very FIRST interview question. 
@@ -142,16 +151,7 @@ export class AiService {
       Resume text:
       ${resumeText}
     `;
-
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return JSON.parse(response.text());
-    } catch (error: unknown) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to generate first question from resume', err.stack);
-      throw new InternalServerErrorException('AI Question generation failed');
-    }
+    return this.generateWithFallback(prompt);
   }
 
   async evaluateAnswer(
@@ -159,11 +159,6 @@ export class AiService {
     expectedConcepts: string[],
     answer: string,
   ): Promise<any> {
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    });
-
     const prompt = `
       You are an expert interviewer evaluating a candidate's answer.
       Question: ${question}
@@ -179,29 +174,16 @@ export class AiService {
         "idealAnswerComparison": "string"
       }
     `;
-
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return JSON.parse(response.text());
-    } catch (error: unknown) {
-      // Type guarding unknown error to satisfy ESLint
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to evaluate answer', err.stack);
-      throw new InternalServerErrorException('AI evaluation failed');
-    }
+    return this.generateWithFallback(prompt);
   }
 
   async transcribeAudio(
     audioBuffer: Buffer,
     mimeType: string,
   ): Promise<string> {
-    // Using gemini-2.5-flash-lite for faster, cost-effective transcription
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-    });
-
+    const modelName = 'gemini-2.5-flash';
     try {
+      const model = this.genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent([
         {
           inlineData: {
@@ -216,11 +198,10 @@ export class AiService {
 
       const response = await result.response;
       return response.text();
-    } catch (error: unknown) {
-      // Safe access to .stack property
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error('Failed to transcribe audio', err.stack);
+    } catch (error: any) {
+      this.logger.error(`Transcription failed with ${modelName}: ${error.message}`);
       throw new InternalServerErrorException('Audio transcription failed');
     }
   }
 }
+

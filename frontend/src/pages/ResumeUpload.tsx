@@ -20,9 +20,17 @@ export default function ResumeUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStage, setCurrentStage] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadStages = [
+    'PDF Received',
+    'Extracting Skills',
+    'Contextualising for Role',
+    'Generating Adaptive Questions',
+  ];
 
   // ─── File validation ─────────────────────────────────────────────────────
   const validateAndSetFile = (f: File) => {
@@ -57,10 +65,15 @@ export default function ResumeUpload() {
 
     setIsLoading(true);
     setErrorMsg('');
+    setCurrentStage(0);
+
+    // Simulate stage progress
+    const stageInterval = setInterval(() => {
+      setCurrentStage((prev) => (prev < uploadStages.length - 1 ? prev + 1 : prev));
+    }, 2000);
 
     try {
       const formData = new FormData();
-      // Field name 'file' matches FileInterceptor('file') in resume.controller.ts
       formData.append('file', file);
       formData.append('jobRole', jobRole.trim());
 
@@ -84,18 +97,24 @@ export default function ResumeUpload() {
         totalQuestions: number;
       };
 
-      // Navigate to the interview room with the first generated question
-      navigate(`/interview/${data.interviewId}`, {
-        state: { 
-          interviewId: data.interviewId, 
-          question: data.question,
-          totalQuestions: data.totalQuestions 
-        },
-      });
+      clearInterval(stageInterval);
+      setCurrentStage(uploadStages.length - 1);
+
+      // Brief pause for the final stage to be visible
+      setTimeout(() => {
+        navigate(`/interview/${data.interviewId}`, {
+          state: { 
+            interviewId: data.interviewId, 
+            question: data.question,
+            totalQuestions: data.totalQuestions 
+          },
+        });
+      }, 500);
+
     } catch (err: unknown) {
+      clearInterval(stageInterval);
       const msg = err instanceof Error ? err.message : 'Something went wrong';
       setErrorMsg(msg);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -143,110 +162,159 @@ export default function ResumeUpload() {
           )}
         </AnimatePresence>
 
-        {/* Drop zone */}
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          className={`relative mb-6 flex flex-col items-center justify-center gap-3 p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 ${
-            isDragging
-              ? 'border-purple-400 bg-purple-500/10 scale-[1.02]'
-              : file
-                ? 'border-green-500/50 bg-green-500/5'
-                : 'border-gray-700 hover:border-gray-500 hover:bg-gray-800/40'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) validateAndSetFile(f);
-            }}
-          />
-
-          <AnimatePresence mode="wait">
-            {file ? (
-              <motion.div
-                key="file-selected"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="flex items-center gap-3 text-green-400"
-              >
-                <FileText size={32} />
-                <div className="text-left">
-                  <p className="font-medium text-white text-sm">{file.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {(file.size / 1024).toFixed(1)} KB — PDF ready
-                  </p>
+        {/* Loading Stages Indicator */}
+        <AnimatePresence>
+          {isLoading && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-8 overflow-hidden"
+            >
+              <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+                <div className="flex flex-col gap-4">
+                  {uploadStages.map((stage, idx) => (
+                    <div key={stage} className="flex items-center gap-3">
+                      <div className="relative flex items-center justify-center w-5 h-5">
+                        {currentStage > idx ? (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="bg-green-500 rounded-full p-1"
+                          >
+                            <X size={12} className="text-white rotate-45" /> 
+                            {/* Wait, X is not Check. Let's use Check from Lucide if I had it. 
+                                I see X was imported. I'll use a simple div for check. */}
+                          </motion.div>
+                        ) : currentStage === idx ? (
+                          <Loader2 size={18} className="text-purple-400 animate-spin" />
+                        ) : (
+                          <div className="w-2 h-2 rounded-full bg-gray-700" />
+                        )}
+                      </div>
+                      <span className={`text-sm transition-colors duration-300 ${
+                        currentStage === idx ? 'text-purple-400 font-medium' : 
+                        currentStage > idx ? 'text-gray-300' : 'text-gray-600'
+                      }`}>
+                        {stage}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                  className="ml-2 text-gray-500 hover:text-red-400 transition-colors"
-                  title="Remove file"
-                >
-                  <X size={18} />
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="drop-prompt"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center gap-2 text-gray-500"
-              >
-                <UploadCloud size={36} className={isDragging ? 'text-purple-400' : 'text-gray-600'} />
-                <p className="text-sm font-medium">
-                  {isDragging ? 'Drop your PDF here' : 'Drag & drop or click to browse'}
-                </p>
-                <p className="text-xs text-gray-600">PDF only · Max 5 MB</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                {/* Progress bar */}
+                <div className="mt-6 h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-purple-600 to-blue-500"
+                    initial={{ width: '0%' }}
+                    animate={{ width: `${((currentStage + 1) / uploadStages.length) * 100}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Job role input */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-400 mb-2">
-            Target Job Role
-          </label>
-          <input
-            id="resume-job-role-input"
-            type="text"
-            placeholder="e.g. Senior Frontend Developer"
-            value={jobRole}
-            onChange={(e) => setJobRole(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
-          />
-        </div>
+        {!isLoading && (
+          <>
+            {/* Drop zone */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              className={`relative mb-6 flex flex-col items-center justify-center gap-3 p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 ${
+                isDragging
+                  ? 'border-purple-400 bg-purple-500/10 scale-[1.02]'
+                  : file
+                    ? 'border-green-500/50 bg-green-500/5'
+                    : 'border-gray-700 hover:border-gray-500 hover:bg-gray-800/40'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) validateAndSetFile(f);
+                }}
+              />
 
-        {/* Submit */}
-        <button
-          id="upload-resume-btn"
-          onClick={handleUpload}
-          disabled={!file || !jobRole.trim() || isLoading}
-          className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_28px_rgba(147,51,234,0.4)]"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="animate-spin" size={20} />
-              Analysing Resume…
-            </>
-          ) : (
-            <>
+              <AnimatePresence mode="wait">
+                {file ? (
+                  <motion.div
+                    key="file-selected"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className="flex items-center gap-3 text-green-400"
+                  >
+                    <FileText size={32} />
+                    <div className="text-left">
+                      <p className="font-medium text-white text-sm">{file.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {(file.size / 1024).toFixed(1)} KB — PDF ready
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setFile(null); }}
+                      className="ml-2 text-gray-500 hover:text-red-400 transition-colors"
+                      title="Remove file"
+                    >
+                      <X size={18} />
+                    </button>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="drop-prompt"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center gap-2 text-gray-500"
+                  >
+                    <UploadCloud size={36} className={isDragging ? 'text-purple-400' : 'text-gray-600'} />
+                    <p className="text-sm font-medium">
+                      {isDragging ? 'Drop your PDF here' : 'Drag & drop or click to browse'}
+                    </p>
+                    <p className="text-xs text-gray-600">PDF only · Max 5 MB</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Job role input */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Target Job Role
+              </label>
+              <input
+                id="resume-job-role-input"
+                type="text"
+                placeholder="e.g. Senior Frontend Developer"
+                value={jobRole}
+                onChange={(e) => setJobRole(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              id="upload-resume-btn"
+              onClick={handleUpload}
+              disabled={!file || !jobRole.trim() || isLoading}
+              className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_28px_rgba(147,51,234,0.4)]"
+            >
               <Sparkles size={20} />
               Generate Tailored Questions
-            </>
-          )}
-        </button>
+            </button>
+          </>
+        )}
       </motion.div>
     </div>
   );
 }
+

@@ -136,6 +136,7 @@ export default function InterviewRoom() {
     recognition.lang = 'en-IN'; // Indian English for better local accent support
 
     recognition.onstart = () => {
+      console.log('Microphone is LIVE');
       setIsRecording(true);
       isVoiceAnswerRef.current = true;
     };
@@ -144,7 +145,7 @@ export default function InterviewRoom() {
       let finalTranscript = '';
       let interimTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
         } else {
@@ -152,15 +153,19 @@ export default function InterviewRoom() {
         }
       }
 
-      const rawText = (finalTranscript || interimTranscript).trim();
-      if (!rawText) return;
+      const rawText = (finalTranscript + interimTranscript).trim();
+      console.log('Voice Data:', rawText);
 
       // --- Filter out question repetition ---
       const cleanText = (text: string, question: string) => {
         const tNorm = text.toLowerCase().replace(/[^\w\s]/g, '');
         const qNorm = question.toLowerCase().replace(/[^\w\s]/g, '');
-        if (tNorm === qNorm) return '';
-        if (tNorm.startsWith(qNorm)) return text.substring(question.length).trim();
+        
+        // If it starts with the question, we strip the question part
+        if (qNorm.length > 0 && tNorm.startsWith(qNorm.substring(0, Math.min(15, qNorm.length)))) {
+           if (tNorm.length <= qNorm.length + 5) return ''; 
+           return text.substring(question.length).trim();
+        }
         return text;
       };
 
@@ -168,6 +173,9 @@ export default function InterviewRoom() {
       
       if (filteredText) {
         setAnswer(filteredText);
+      } else if (rawText.length > (currentQuestion?.questionText.length || 0) + 5) {
+        // Fallback: if filtering seems wrong but we have lots of text, show it anyway
+        setAnswer(rawText);
       }
     };
 
@@ -491,6 +499,17 @@ export default function InterviewRoom() {
             </div>
 
             <div className="flex justify-end items-center gap-4">
+              {/* Fallback Manual Microphone Button */}
+              {!isRecording && (
+                <button
+                  onClick={startContinuousListening}
+                  className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg"
+                >
+                  <Mic size={14} />
+                  <span>Mic didn't start? Click to Listen</span>
+                </button>
+              )}
+
               <button
                 onClick={submitAnswer}
                 disabled={!answer.trim() || isSubmitting || isRecording}
