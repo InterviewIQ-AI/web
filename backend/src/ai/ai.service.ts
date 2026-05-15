@@ -32,8 +32,8 @@ export class AiService {
    * Tries Flash first, then Pro if Flash fails (e.g. 404/Quota).
    */
   private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
-    // Prioritize 1.5 Flash for maximum speed and stability
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+    // Using the advanced models available to this key (Gemini 2.5 and Gemini 3)
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
     let lastError: any = null;
 
     for (const modelName of modelsToTry) {
@@ -200,7 +200,7 @@ export class AiService {
 
     if (snapshots && snapshots.length > 0) {
       // Multimodal request
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
       const imageParts = snapshots.map(s => {
         const base64Data = s.split(',')[1];
@@ -232,7 +232,7 @@ export class AiService {
     audioBuffer: Buffer,
     mimeType: string,
   ): Promise<string> {
-    const modelName = 'gemini-2.5-flash';
+    const modelName = 'gemini-2.5-flash'; // Using 2.5-flash for state-of-the-art transcription
     try {
       const model = this.genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent([
