@@ -17,6 +17,7 @@ export default function ResumeUpload() {
   const navigate = useNavigate();
 
   const [jobRole, setJobRole] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +77,9 @@ export default function ResumeUpload() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('jobRole', jobRole.trim());
+      if (jobDescription.trim()) {
+        formData.append('jobDescription', jobDescription.trim());
+      }
 
       const res = await fetch('/api/resume/upload', {
         method: 'POST',
@@ -298,6 +302,20 @@ export default function ResumeUpload() {
                 onKeyDown={handleKeyDown}
                 disabled={isLoading}
                 className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
+              />
+            </div>
+
+            {/* Job description input (optional) */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Job Description (Optional)
+              </label>
+              <textarea
+                placeholder="Paste the job description to get highly tailored questions..."
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                disabled={isLoading}
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50 min-h-[100px] resize-y"
               />
             </div>
 

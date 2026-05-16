@@ -15,7 +15,7 @@ export class ResumeService {
     private readonly interviewService: InterviewService,
   ) {}
 
-  async processResume(buffer: Buffer, jobRole: string) {
+  async processResume(buffer: Buffer, jobRole: string, jobDescription?: string) {
     // ── Step 1: Extract text from PDF ────────────────────────────────────────
     let resumeText: string;
     try {
@@ -44,6 +44,7 @@ export class ResumeService {
     const firstQuestion = await this.aiService.generateQuestionsFromResume(
       resumeText,
       jobRole,
+      jobDescription,
     );
 
     // ── Step 3: Persist interview + first question to DB ──────────────────────

@@ -24,6 +24,7 @@ export class ResumeController {
   async uploadResume(
     @UploadedFile() file: Express.Multer.File,
     @Body('jobRole') jobRole: string,
+    @Body('jobDescription') jobDescription?: string,
   ) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
@@ -40,6 +41,6 @@ export class ResumeController {
       throw new PayloadTooLargeException('File exceeds the 5 MB limit.');
     }
 
-    return this.resumeService.processResume(file.buffer, jobRole.trim());
+    return this.resumeService.processResume(file.buffer, jobRole.trim(), jobDescription?.trim());
   }
 }

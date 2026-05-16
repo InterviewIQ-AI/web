@@ -33,7 +33,12 @@ export class AiService {
    */
   private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
     // Using the advanced models available to this key (Gemini 2.5 and Gemini 3)
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
+    const modelsToTry = [
+      'gemini-2.0-flash', 
+      'gemini-flash-latest', 
+      'gemini-2.5-flash', 
+      'gemini-2.5-pro'
+    ];
     let lastError: any = null;
 
     for (const modelName of modelsToTry) {
@@ -87,6 +92,7 @@ export class AiService {
       6. Achievements & Wrap-up
 
       Generate the very FIRST interview question. It must be an "Introduction" question (e.g., "Please introduce yourself and walk me through your background").
+      CRITICAL: Keep the question very concise and under 15 words.
       Return a single JSON object (not an array) with this exact schema:
       {
         "questionText": "string",
@@ -126,6 +132,7 @@ export class AiService {
       - Ask MULTIPLE questions per phase if needed, but spend the VAST MAJORITY of the interview on Technical, HR, and MR scenarios.
       - Ensure the interview feels like a real, conversational flow. Build on their previous answers.
       - The category MUST be exactly one of: TECHNICAL | HR | MR
+      - PROGRESSIVE LENGTH: If this is within the first 3 questions of the interview, keep the question very SHORT (under 20 words). As the interview continues, you can ask more detailed and descriptive questions.
 
       Return a single JSON object (not an array):
       {
@@ -141,11 +148,18 @@ export class AiService {
   async generateQuestionsFromResume(
     resumeText: string,
     jobRole: string,
+    jobDescription?: string,
   ): Promise<any> {
+    const jdSection = jobDescription 
+      ? `Target Job Description:\n${jobDescription}\n`
+      : '';
+
     const prompt = `
       You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
+      ${jdSection}
       generate the very FIRST interview question. 
-      It must be an "Introduction" question that asks them to introduce themselves while highlighting a key aspect of their resume.
+      It must be an "Introduction" question that asks them to introduce themselves while highlighting a key aspect of their resume relevant to the role (and job description if provided).
+      CRITICAL: Keep the question very concise and under 15 words.
       Return a single JSON object (not an array):
       {
         "questionText": "string",
@@ -200,7 +214,8 @@ export class AiService {
 
     if (snapshots && snapshots.length > 0) {
       // Multimodal request
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      // Multimodal request using a more stable model with higher quota
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
       const imageParts = snapshots.map(s => {
         const base64Data = s.split(',')[1];

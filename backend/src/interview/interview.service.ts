@@ -124,11 +124,11 @@ export class InterviewService {
       const [answer] = await this.db
         .insert(answers)
         .values({
-          questionId,
+          questionId: Number(questionId),
           userAnswer,
           isVoice,
-          timeTakenSeconds,
-          score: evaluation?.score ?? 0,
+          timeTakenSeconds: Math.round(Number(timeTakenSeconds ?? 0)),
+          score: Math.round(Number(evaluation?.score ?? 0)),
           feedback: evaluation?.feedback ?? 'Evaluation unavailable.',
           missingConcepts: evaluation?.missingConcepts ?? [],
           behavioralFeedback: evaluation?.behavioralFeedback ?? null,

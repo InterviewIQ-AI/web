@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X,
+  Code, User, Briefcase, X, MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -72,6 +72,7 @@ export default function InterviewRoom() {
   const [isEnding, setIsEnding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([]); // Base64 images
@@ -140,6 +141,8 @@ export default function InterviewRoom() {
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
+    evaluationRef.current = null; // CRITICAL FIX: Clear the ref too!
+    isSubmittingRef.current = false;
     setStartTime(Date.now());
     window.speechSynthesis.cancel();
   }, [currentQuestion?.id]);
@@ -178,85 +181,94 @@ export default function InterviewRoom() {
   }, [cameraOn]);
 
   const recognitionRef = useRef<any>(null);
+  const lastSpokenIdRef = useRef<number | null>(null);
 
   // ─── Voice Recording (Real-time & Continuous) ─────────────────────────────
   const startContinuousListening = useCallback(() => {
     if (evaluationRef.current || isSubmittingRef.current) return;
 
-    // Use Web Speech API for real-time word-by-word feedback
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.warn('Speech Recognition not supported in this browser.');
+      console.warn('Speech Recognition not supported.');
       return;
+    }
+
+    // Stop any existing instance before creating a new one
+    if (recognitionRef.current) {
+      try { recognitionRef.current.onend = null; recognitionRef.current.stop(); } catch(e) {}
     }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-IN'; // Indian English for better local accent support
+    recognition.lang = 'en-US'; // Using en-US for maximum compatibility
 
     recognition.onstart = () => {
-      console.log('Microphone is LIVE');
       setIsRecording(true);
       isVoiceAnswerRef.current = true;
     };
 
     recognition.onresult = (event: any) => {
       let finalTranscript = '';
-      let interimTranscript = '';
+      let interim = '';
 
-      for (let i = 0; i < event.results.length; ++i) {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
         } else {
-          interimTranscript += event.results[i][0].transcript;
+          interim += event.results[i][0].transcript;
         }
       }
 
-      const rawText = (finalTranscript + interimTranscript).trim();
-      console.log('Voice Data:', rawText);
+      setInterimTranscript(interim);
 
-      // --- Filter out question repetition ---
-      const cleanText = (text: string, question: string) => {
-        const tNorm = text.toLowerCase().replace(/[^\w\s]/g, '');
-        const qNorm = question.toLowerCase().replace(/[^\w\s]/g, '');
-
-        // If it starts with the question, we strip the question part
-        if (qNorm.length > 0 && tNorm.startsWith(qNorm.substring(0, Math.min(15, qNorm.length)))) {
-          if (tNorm.length <= qNorm.length + 5) return '';
-          return text.substring(question.length).trim();
-        }
-        return text;
-      };
-
-      const filteredText = cleanText(rawText, currentQuestion?.questionText || '');
-
-      if (filteredText) {
-        setAnswer(filteredText);
-      } else if (rawText.length > (currentQuestion?.questionText.length || 0) + 5) {
-        // Fallback: if filtering seems wrong but we have lots of text, show it anyway
-        setAnswer(rawText);
+      // Extract the full current transcript
+      let currentFullText = '';
+      for (let i = 0; i < event.results.length; ++i) {
+        currentFullText += event.results[i][0].transcript;
       }
+      
+      const rawText = currentFullText.trim();
+      
+      // Basic AI voice stripping: if it exactly matches the start of the question, ignore it
+      const qText = currentQuestion?.questionText || '';
+      if (rawText.toLowerCase() === qText.toLowerCase().substring(0, rawText.length)) {
+        return; 
+      }
+
+      setAnswer(rawText);
     };
 
     recognition.onerror = (event: any) => {
-      if (event.error === 'no-speech') return;
-      console.error('Speech recognition error:', event.error);
+      console.error('Speech error:', event.error);
+      if (event.error === 'not-allowed') {
+        setErrorMsg('Microphone access denied. Please enable it in browser settings.');
+      }
       setIsRecording(false);
     };
 
     recognition.onend = () => {
-      setIsRecording(false);
-      // Restart if still in answering phase
-      if (!evaluationRef.current && !isSubmittingRef.current) {
-        recognition.start();
+      // Small delay before marking as not recording to allow HMR/State to settle
+      setTimeout(() => setIsRecording(false), 100);
+      
+      // Restart if we're still in the answering phase and this is still the active recognition
+      if (!evaluationRef.current && !isSubmittingRef.current && recognitionRef.current === recognition) {
+        try {
+          recognition.start();
+        } catch (e) {
+          // ignore
+        }
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error('Failed to start recognition:', e);
+    }
 
-    // ── Behavioral Sampling: Capture snapshots every 7 seconds while recording ──
+    // Capture snapshots for behavioral analysis
     const captureInterval = setInterval(() => {
       if (!videoRef.current || !canvasRef.current || !cameraOn) return;
       const canvas = canvasRef.current;
@@ -267,11 +279,12 @@ export default function InterviewRoom() {
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        setSnapshots(prev => [...prev.slice(-4), dataUrl]); // Keep last 5 snapshots
+        setSnapshots(prev => [...prev.slice(-4), dataUrl]);
       }
     }, 7000);
 
     return () => {
+      recognition.onend = null;
       recognition.stop();
       clearInterval(captureInterval);
     };
@@ -308,12 +321,23 @@ export default function InterviewRoom() {
     questionU.volume = 1.0;
     questionU.onerror = silentHandler;
 
-    // Start listening as soon as the question finishes speaking
+    // Start listening as soon as the question finishes speaking or if it fails
     questionU.onend = () => { startContinuousListening(); };
+    questionU.onerror = () => { 
+      console.warn('SpeechSynthesis error, starting mic anyway');
+      startContinuousListening(); 
+    };
 
     const startSpeaking = () => {
+      // Avoid double speaking same question
+      if (lastSpokenIdRef.current === currentQuestion.id) return;
+      lastSpokenIdRef.current = currentQuestion.id;
+
       applyVoice(questionU);
-      window.speechSynthesis.speak(questionU);
+      // Small timeout helps Chrome process the cancel() before the next speak()
+      setTimeout(() => {
+        window.speechSynthesis.speak(questionU);
+      }, 50);
     };
 
     if (window.speechSynthesis.getVoices().length === 0) {
@@ -330,9 +354,15 @@ export default function InterviewRoom() {
 
   // Automatically speak the question immediately when it appears
   useEffect(() => {
-    if (!autoRead || !currentQuestion) return;
-    speakQuestion();
-  }, [speakQuestion, autoRead, currentQuestion?.id]);
+    if (!currentQuestion) return;
+    
+    if (autoRead) {
+      speakQuestion();
+    } else {
+      // If not reading, start listening immediately
+      startContinuousListening();
+    }
+  }, [currentQuestion?.id, autoRead, speakQuestion, startContinuousListening]);
 
   // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async () => {
@@ -383,7 +413,7 @@ export default function InterviewRoom() {
       const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null };
       setEvaluation(data.evaluation);
       evaluationRef.current = data.evaluation;
-
+      
       // Update history reference IMMEDIATELY
       answeredHistoryRef.current = updatedHistory;
 
@@ -446,7 +476,7 @@ export default function InterviewRoom() {
       } else {
         navigate('/dashboard');
       }
-    } catch {
+    } catch { 
       navigate('/dashboard');
     }
   };
@@ -483,13 +513,13 @@ export default function InterviewRoom() {
       {/* ── Settings Modal ── */}
       <AnimatePresence>
         {showSettings && (
-          <motion.div
+          <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
           >
-            <motion.div
+            <motion.div 
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
@@ -500,7 +530,7 @@ export default function InterviewRoom() {
                   <Briefcase size={22} className="text-purple-400" />
                   Voice Settings
                 </h3>
-                <button
+                <button 
                   onClick={() => setShowSettings(false)}
                   className="text-gray-500 hover:text-white transition-colors"
                 >
@@ -515,11 +545,11 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Auto-read Questions</p>
                     <p className="text-xs text-gray-500">AI will speak as soon as the question appears.</p>
                   </div>
-                  <button
+                  <button 
                     onClick={() => setAutoRead(!autoRead)}
                     className={`w-12 h-6 rounded-full transition-colors relative ${autoRead ? 'bg-purple-600' : 'bg-gray-800'}`}
                   >
-                    <motion.div
+                    <motion.div 
                       animate={{ x: autoRead ? 26 : 4 }}
                       className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
                     />
@@ -532,10 +562,10 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Speaking Speed</p>
                     <span className="text-xs font-mono text-purple-400">{voiceRate.toFixed(2)}x</span>
                   </div>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="1.5"
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="1.5" 
                     step="0.05"
                     value={voiceRate}
                     onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
@@ -553,10 +583,10 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Voice Pitch</p>
                     <span className="text-xs font-mono text-purple-400">{voicePitch.toFixed(2)}</span>
                   </div>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="1.5"
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="1.5" 
                     step="0.05"
                     value={voicePitch}
                     onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
@@ -569,7 +599,7 @@ export default function InterviewRoom() {
                 </div>
               </div>
 
-              <button
+              <button 
                 onClick={() => {
                   speakQuestion();
                   setShowSettings(false);
@@ -760,92 +790,66 @@ export default function InterviewRoom() {
                 <CheckCircle size={22} className="text-green-400" />
                 Answer Saved &amp; Evaluated
               </h3>
-              <span
-                className={`text-3xl font-bold ${evaluation.score >= 8
-                  ? 'text-green-400'
-                  : evaluation.score >= 5
-                    ? 'text-yellow-400'
-                    : 'text-red-400'
-                  }`}
-              >
-                {evaluation.score}/10
-              </span>
+              <div className="px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-full">
+                <span className="text-purple-400 font-bold text-lg">{evaluation.score}</span>
+                <span className="text-gray-500 text-sm ml-1">/ 10</span>
+              </div>
             </div>
 
-            <div className="bg-gray-800/40 rounded-xl p-4 text-sm text-gray-300 leading-relaxed border border-gray-700/30 italic">
-              <p className="font-medium text-gray-500 mb-1 text-xs uppercase tracking-wider not-italic">Your Response</p>
-              "{answer}"
-            </div>
-
-            <div className="bg-gray-800/60 rounded-xl p-4 text-sm text-gray-300 leading-relaxed">
-              <p className="font-medium text-gray-400 mb-1 text-xs uppercase tracking-wider">AI Feedback</p>
+            <div className="p-5 bg-gray-800/50 border border-gray-700 rounded-xl leading-relaxed text-gray-200">
               {evaluation.feedback}
             </div>
 
-            {evaluation.missingConcepts?.length > 0 && (
-              <div>
-                <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">Missing Concepts</p>
+            {evaluation.missingConcepts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">Improvement Areas</p>
                 <div className="flex flex-wrap gap-2">
-                  {evaluation.missingConcepts.map((c) => (
-                    <span
-                      key={c}
-                      className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs px-3 py-1 rounded-full"
-                    >
-                      {c}
+                  {evaluation.missingConcepts.map((concept) => (
+                    <span key={concept} className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-medium">
+                      {concept}
                     </span>
                   ))}
                 </div>
               </div>
             )}
 
+            {evaluation.behavioralFeedback && (
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Eye Contact</p>
+                  <p className="text-sm text-gray-300">{evaluation.behavioralFeedback.eyeContact}</p>
+                </div>
+                <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-xl">
+                  <p className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-1">Confidence</p>
+                  <p className="text-sm text-gray-300">{evaluation.behavioralFeedback.confidence}</p>
+                </div>
+              </div>
+            )}
 
-            {/* Next Question / End Interview buttons */}
-            <div className="flex gap-3 pt-1">
-              {questionNumber < 30 ? (
-                <button
-                  onClick={handleNextQuestion}
-                  disabled={isFetchingNext || isEnding}
-                  className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all"
-                >
-                  {isFetchingNext ? (
-                    <><Loader2 size={18} className="animate-spin" /><span>Generating Next Question…</span></>
-                  ) : (
-                    <><span>Next Question</span><ArrowRight size={18} /></>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleEndInterview}
-                  disabled={isEnding}
-                  className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-                >
-                  {isEnding ? (
-                    <><Loader2 size={18} className="animate-spin" /><span>Evaluating Final Score…</span></>
-                  ) : (
-                    <><span>Finish Interview &amp; Get Results</span><CheckCircle size={18} /></>
-                  )}
-                </button>
-              )}
-
-              {questionNumber < totalQuestions && (
-                <button
-                  onClick={handleEndInterview}
-                  disabled={isFetchingNext || isEnding}
-                  className="flex items-center gap-2 bg-gray-800 hover:bg-red-500/20 hover:border-red-500/50 border border-gray-700 text-gray-400 hover:text-red-400 px-5 py-3 rounded-xl transition-all font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isEnding ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <><LogOut size={18} /><span>Exit Early</span></>
-                  )}
-                </button>
-              )}
+            <div className="flex justify-end gap-3 pt-6 border-t border-gray-800">
+              <button
+                onClick={handleEndInterview}
+                disabled={isEnding}
+                className="flex items-center gap-2 px-6 py-3 text-gray-400 hover:text-white transition-colors text-sm font-medium"
+              >
+                <LogOut size={18} />
+                End Session
+              </button>
+              <button
+                onClick={handleNextQuestion}
+                disabled={isFetchingNext}
+                className="flex items-center gap-2 bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-xl transition-all font-bold shadow-lg"
+              >
+                {isFetchingNext ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>Next Question <ArrowRight size={18} /></>
+                )}
+              </button>
             </div>
           </motion.div>
         )}
       </div>
-      {/* Hidden canvas for video sampling (Behavioral Analysis) */}
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
