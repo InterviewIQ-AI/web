@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase,
+  Code, User, Briefcase, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -220,17 +220,17 @@ export default function InterviewRoom() {
       const cleanText = (text: string, question: string) => {
         const tNorm = text.toLowerCase().replace(/[^\w\s]/g, '');
         const qNorm = question.toLowerCase().replace(/[^\w\s]/g, '');
-        
+
         // If it starts with the question, we strip the question part
         if (qNorm.length > 0 && tNorm.startsWith(qNorm.substring(0, Math.min(15, qNorm.length)))) {
-           if (tNorm.length <= qNorm.length + 5) return ''; 
-           return text.substring(question.length).trim();
+          if (tNorm.length <= qNorm.length + 5) return '';
+          return text.substring(question.length).trim();
         }
         return text;
       };
 
       const filteredText = cleanText(rawText, currentQuestion?.questionText || '');
-      
+
       if (filteredText) {
         setAnswer(filteredText);
       } else if (rawText.length > (currentQuestion?.questionText.length || 0) + 5) {
@@ -383,7 +383,7 @@ export default function InterviewRoom() {
       const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null };
       setEvaluation(data.evaluation);
       evaluationRef.current = data.evaluation;
-      
+
       // Update history reference IMMEDIATELY
       answeredHistoryRef.current = updatedHistory;
 
@@ -433,6 +433,10 @@ export default function InterviewRoom() {
   // ─── End Interview ────────────────────────────────────────────────────────
   const handleEndInterview = async () => {
     setIsEnding(true);
+    // Stop speech and mic before leaving
+    window.speechSynthesis.cancel();
+    recognitionRef.current?.stop();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     try {
       if (interviewId) {
         await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
@@ -440,10 +444,10 @@ export default function InterviewRoom() {
         localStorage.removeItem('active_interview_id');
         navigate(`/results/${interviewId}`);
       } else {
-        navigate('/');
+        navigate('/dashboard');
       }
-    } catch { 
-      navigate('/');
+    } catch {
+      navigate('/dashboard');
     }
   };
 
@@ -479,13 +483,13 @@ export default function InterviewRoom() {
       {/* ── Settings Modal ── */}
       <AnimatePresence>
         {showSettings && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
@@ -496,7 +500,7 @@ export default function InterviewRoom() {
                   <Briefcase size={22} className="text-purple-400" />
                   Voice Settings
                 </h3>
-                <button 
+                <button
                   onClick={() => setShowSettings(false)}
                   className="text-gray-500 hover:text-white transition-colors"
                 >
@@ -511,11 +515,11 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Auto-read Questions</p>
                     <p className="text-xs text-gray-500">AI will speak as soon as the question appears.</p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setAutoRead(!autoRead)}
                     className={`w-12 h-6 rounded-full transition-colors relative ${autoRead ? 'bg-purple-600' : 'bg-gray-800'}`}
                   >
-                    <motion.div 
+                    <motion.div
                       animate={{ x: autoRead ? 26 : 4 }}
                       className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
                     />
@@ -528,10 +532,10 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Speaking Speed</p>
                     <span className="text-xs font-mono text-purple-400">{voiceRate.toFixed(2)}x</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="0.5" 
-                    max="1.5" 
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="1.5"
                     step="0.05"
                     value={voiceRate}
                     onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
@@ -549,10 +553,10 @@ export default function InterviewRoom() {
                     <p className="text-sm font-bold text-gray-200">Voice Pitch</p>
                     <span className="text-xs font-mono text-purple-400">{voicePitch.toFixed(2)}</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="0.5" 
-                    max="1.5" 
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="1.5"
                     step="0.05"
                     value={voicePitch}
                     onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
@@ -565,7 +569,7 @@ export default function InterviewRoom() {
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={() => {
                   speakQuestion();
                   setShowSettings(false);
@@ -757,13 +761,12 @@ export default function InterviewRoom() {
                 Answer Saved &amp; Evaluated
               </h3>
               <span
-                className={`text-3xl font-bold ${
-                  evaluation.score >= 8
-                    ? 'text-green-400'
-                    : evaluation.score >= 5
-                      ? 'text-yellow-400'
-                      : 'text-red-400'
-                }`}
+                className={`text-3xl font-bold ${evaluation.score >= 8
+                  ? 'text-green-400'
+                  : evaluation.score >= 5
+                    ? 'text-yellow-400'
+                    : 'text-red-400'
+                  }`}
               >
                 {evaluation.score}/10
               </span>
@@ -795,10 +798,6 @@ export default function InterviewRoom() {
               </div>
             )}
 
-            <div className="bg-gray-800/60 rounded-xl p-4 text-sm text-gray-300 leading-relaxed">
-              <p className="font-medium text-gray-400 mb-1 text-xs uppercase tracking-wider">Ideal Answer Comparison</p>
-              {evaluation.idealAnswerComparison}
-            </div>
 
             {/* Next Question / End Interview buttons */}
             <div className="flex gap-3 pt-1">

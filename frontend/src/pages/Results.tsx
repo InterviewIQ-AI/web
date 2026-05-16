@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  CheckCircle, AlertCircle, ArrowLeft, Download, Share2, 
+import {
+  CheckCircle, AlertCircle, ArrowLeft, Download, Share2,
   Target, Award, Clock, MessageSquare, ChevronRight, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -65,7 +65,7 @@ export default function Results() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f]">
-        <motion.div 
+        <motion.div
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
           className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full"
@@ -81,7 +81,7 @@ export default function Results() {
           <AlertCircle size={64} className="mx-auto text-red-500" />
           <h2 className="text-2xl font-bold text-white">Oops! Could not load results</h2>
           <p className="text-gray-400 max-w-md mx-auto">{error || "The interview session was not found."}</p>
-          <button 
+          <button
             onClick={() => navigate('/')}
             className="bg-gray-800 text-white px-6 py-2 rounded-xl border border-gray-700 hover:bg-gray-700 transition-all"
           >
@@ -114,8 +114,8 @@ export default function Results() {
 
       <div className="max-w-5xl mx-auto px-6 pt-12 relative z-10">
         {/* Navigation */}
-        <button 
-          onClick={() => navigate('/')}
+        <button
+          onClick={() => navigate('/dashboard')}
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-8 group"
         >
           <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
@@ -130,8 +130,8 @@ export default function Results() {
                 Interview Report
               </span>
               <span className="text-gray-500 text-sm">
-                {new Date(data.createdAt).toLocaleDateString('en-US', { 
-                  month: 'long', day: 'numeric', year: 'numeric' 
+                {new Date(data.createdAt).toLocaleDateString('en-US', {
+                  month: 'long', day: 'numeric', year: 'numeric'
                 })}
               </span>
             </div>
@@ -222,7 +222,7 @@ export default function Results() {
             const isExpanded = expandedQuestion === q.id;
 
             return (
-              <motion.div 
+              <motion.div
                 key={q.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -230,7 +230,7 @@ export default function Results() {
                 className="bg-gray-900/50 border border-gray-800 rounded-2xl overflow-hidden shadow-lg"
               >
                 {/* Header/Summary */}
-                <div 
+                <div
                   onClick={() => setExpandedQuestion(isExpanded ? null : q.id)}
                   className="p-6 cursor-pointer hover:bg-gray-800/30 transition-colors flex items-center justify-between gap-4"
                 >
@@ -250,7 +250,7 @@ export default function Results() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-4 shrink-0">
                     <div className={`px-4 py-1.5 rounded-xl border text-sm font-bold ${getScoreBg(answer?.score || 0)} ${getScoreColor(answer?.score || 0)}`}>
                       {answer?.score || 0}/10
@@ -262,7 +262,7 @@ export default function Results() {
                 {/* Details */}
                 <AnimatePresence>
                   {isExpanded && (
-                    <motion.div 
+                    <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -330,6 +330,12 @@ export default function Results() {
 
         {/* Footer Actions */}
         <div className="mt-12 flex flex-col sm:flex-row gap-4 items-center justify-center border-t border-gray-800 pt-12">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(147,51,234,0.25)]"
+          >
+            Start New Interview
+          </button>
           <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-black font-bold px-8 py-3 rounded-xl hover:bg-gray-200 transition-all">
             <Download size={20} />
             Download PDF Report
