@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { BrainCircuit, Loader2, Sparkles, ChevronRight, Calendar, Award, BarChart3, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 interface Question {
   id: number;
@@ -47,7 +48,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const res = await fetch('/api/interview');
+        const res = await apiFetch('/api/interview');
         if (!res.ok) return;
         const data: Interview[] = await res.json();
         setRecentSessions(
@@ -69,7 +70,7 @@ export default function Dashboard() {
     setIsLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch('/api/interview/start', {
+      const res = await apiFetch('/api/interview/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobRole: jobRole.trim() }),

@@ -39,6 +39,8 @@ export default function SignUpPage() {
         try {
             if (provider === 'google') await signInWithGoogle();
             else await signInWithGithub();
+            // ProtectedRoute will redirect to /profile-setup if profile incomplete,
+            // or /dashboard if already complete
             navigate('/dashboard');
         } catch (e: any) {
             setError(e.message?.replace('Firebase: ', '') ?? 'Sign-up failed');
@@ -54,6 +56,8 @@ export default function SignUpPage() {
         setError('');
         try {
             await signUpEmail(email, password, name);
+            // onAuthStateChanged fires → fetchDbUser → ProtectedRoute sees
+            // profileCompleted=false → auto-redirects to /profile-setup
             navigate('/dashboard');
         } catch (e: any) {
             setError(e.message?.replace('Firebase: ', '') ?? 'Sign-up failed');

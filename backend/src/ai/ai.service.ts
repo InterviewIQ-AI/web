@@ -82,21 +82,27 @@ export class AiService {
   async generateQuestionsForRole(jobRole: string): Promise<any> {
     const prompt = `
       You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
-      
-      A realistic interview flows through these progressive phases:
-      1. Introduction & Background
-      2. Career Objective & Education
-      3. Projects & Past Experience
-      4. Deep Technical Knowledge (Core focus)
-      5. HR / Managerial Scenarios (MR)
-      6. Achievements & Wrap-up
 
-      Generate the very FIRST interview question. It must be an "Introduction" question (e.g., "Please introduce yourself and walk me through your background").
-      CRITICAL: Keep the question very concise and under 15 words.
+      A realistic interview flows through these progressive phases:
+      1. Introduction & Background (BEHAVIORAL)
+      2. Career Objectives & Education (BEHAVIORAL)
+      3. Projects & Past Experience (BEHAVIORAL or TECHNICAL)
+      4. Deep Technical Knowledge — core focus (TECHNICAL)
+      5. Situational & Managerial Scenarios (BEHAVIORAL)
+      6. Achievements & Wrap-up (BEHAVIORAL)
+
+      Generate the very FIRST interview question. It MUST be an introduction question
+      (e.g., "Please introduce yourself and walk me through your background.").
+      CRITICAL RULES:
+      - Keep the question STRICTLY under 15 words.
+      - The "category" field MUST be exactly one of the two string literals: "TECHNICAL" or "BEHAVIORAL".
+      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any other value — this will cause a fatal DB constraint violation.
+      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
+
       Return a single JSON object (not an array) with this exact schema:
       {
         "questionText": "string",
-        "category": "HR",
+        "category": "BEHAVIORAL",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
       }
@@ -107,39 +113,54 @@ export class AiService {
   async generateNextQuestion(
     jobRole: string,
     history: Array<{ question: string; answer: string }>,
+    hints?: { suppressedConcepts: string[]; drillConcepts: string[] },
   ): Promise<any> {
     const historyText = history
       .map((h, i) => `Q${i + 1}: ${h.question}\nA${i + 1}: ${h.answer}`)
       .join('\n\n');
 
+    const suppressionBlock = hints?.suppressedConcepts?.length
+      ? `SUPPRESSED CONCEPTS (candidate has mastered these — do NOT ask about them again for now): ${hints.suppressedConcepts.join(', ')}`
+      : '';
+
+    const drillBlock = hints?.drillConcepts?.length
+      ? `DRILL CONCEPTS (candidate struggled with these — prioritise questions that revisit them): ${hints.drillConcepts.join(', ')}`
+      : '';
+
     const prompt = `
       You are an expert interviewer conducting an interview for the role: "${jobRole}".
-      
+
       A realistic interview flows through these progressive phases:
-      1. Introduction & Background
-      2. Career Objective & Education
-      3. Projects & Past Experience
-      4. Deep Technical Knowledge (Core focus)
-      5. HR / Managerial Scenarios (MR)
-      6. Achievements & Wrap-up
+      1. Introduction & Background (BEHAVIORAL)
+      2. Career Objectives & Education (BEHAVIORAL)
+      3. Projects & Past Experience (BEHAVIORAL or TECHNICAL)
+      4. Deep Technical Knowledge — core focus (TECHNICAL)
+      5. Situational & Managerial Scenarios (BEHAVIORAL)
+      6. Achievements & Wrap-up (BEHAVIORAL)
 
       Previous conversation history:
       ${historyText}
 
-      Based on the history, determine the current phase of the interview and generate the NEXT most relevant question.
-      Rules:
-      - Progress naturally through the phases. Do not jump straight to technical if they haven't discussed their background.
-      - Ask MULTIPLE questions per phase if needed, but spend the VAST MAJORITY of the interview on Technical, HR, and MR scenarios.
-      - Ensure the interview feels like a real, conversational flow. Build on their previous answers.
-      - The category MUST be exactly one of: TECHNICAL | HR | MR
-      - PROGRESSIVE LENGTH: If this is within the first 3 questions of the interview, keep the question very SHORT (under 20 words). As the interview continues, you can ask more detailed and descriptive questions.
+      ${suppressionBlock}
+      ${drillBlock}
+
+      Based on the history, determine the current phase and generate the NEXT most relevant question.
+      CRITICAL RULES:
+      - Progress naturally through phases. Do not jump to technical before background is established.
+      - Spend the majority of the interview on phases 4 and 5.
+      - Build on the candidate's previous answers for a conversational flow.
+      - Respect the SUPPRESSED and DRILL concept lists above when choosing the question topic.
+      - The "category" field MUST be EXACTLY one of these two string literals: "TECHNICAL" or "BEHAVIORAL".
+      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any variant — this will cause a fatal DB constraint violation.
+      - PROGRESSIVE LENGTH: If history length <= 3, keep the question STRICTLY under 15 words. Otherwise, use detailed situational syntax.
+      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
 
       Return a single JSON object (not an array):
       {
         "questionText": "string",
-        "category": "TECHNICAL | HR | MR",
+        "category": "TECHNICAL" | "BEHAVIORAL",
         "expectedConcepts": ["string"],
-        "difficulty": number (1-5)
+        "difficulty": <integer from 1 to 5>
       }
     `;
     return this.generateWithFallback(prompt);
@@ -157,13 +178,19 @@ export class AiService {
     const prompt = `
       You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
       ${jdSection}
-      generate the very FIRST interview question. 
-      It must be an "Introduction" question that asks them to introduce themselves while highlighting a key aspect of their resume relevant to the role (and job description if provided).
-      CRITICAL: Keep the question very concise and under 15 words.
+      generate the very FIRST interview question.
+      It must be an introduction question that asks the candidate to introduce themselves
+      while highlighting a key aspect of their resume relevant to the role (and job description if provided).
+      CRITICAL RULES:
+      - Keep the question STRICTLY under 15 words.
+      - The "category" field MUST be exactly one of the two string literals: "TECHNICAL" or "BEHAVIORAL".
+      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any other value — this will cause a fatal DB constraint violation.
+      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
+
       Return a single JSON object (not an array):
       {
         "questionText": "string",
-        "category": "HR",
+        "category": "BEHAVIORAL",
         "expectedConcepts": ["string"],
         "difficulty": number (1-5)
       }
@@ -182,32 +209,34 @@ export class AiService {
   ): Promise<any> {
     const prompt = `
       You are an expert interviewer evaluating a candidate's answer.
-      
+
       [CONTENT EVALUATION]
       Question: ${question}
       Candidate's Answer: ${answer}
       Expected Concepts: ${expectedConcepts.join(', ')}
 
       [BEHAVIORAL EVALUATION]
-      Attached are snapshots of the candidate during this answer.
-      Evaluate their Eye Contact, Posture, and Confidence/Expressions.
-      
-      [INSTRUCTIONS]
-      1. Score the answer content (0-10).
-      2. Provide EXTREMELY CONCISE feedback (max 2 sentences).
-      3. Identify missing concepts.
-      4. Provide specific behavioral feedback.
+      Attached are webcam snapshots of the candidate taken during this answer.
+      Evaluate their Eye Contact, Posture, and Confidence/Expressions based on the images.
 
-      Return JSON schema:
+      [CRITICAL OUTPUT RULES]
+      - Return RAW JSON only. Do NOT wrap in markdown code blocks (no triple backticks).
+      - The response MUST start with '{' and end with '}' — no leading or trailing text.
+      - "feedback" MUST be bounded to a MAXIMUM of 2 sentences.
+      - "eyeContact" MUST start with exactly one of: "Excellent", "Good", or "Poor" — followed by " - " and one justification sentence.
+      - "idealAnswer" MUST be a concise model answer of 2–4 sentences covering the key expected concepts.
+
+      Return this exact JSON schema:
       {
-        "score": number (0-10),
-        "feedback": "string",
+        "score": <integer from 0 to 10>,
+        "feedback": "Max 2 sentences evaluating content clarity.",
+        "idealAnswer": "2-4 sentence model answer covering all key expected concepts.",
         "missingConcepts": ["string"],
         "behavioralFeedback": {
-          "eyeContact": "Excellent/Good/Poor - briefly why",
-          "posture": "string",
-          "confidence": "string",
-          "overall": "string"
+          "eyeContact": "Excellent | Good | Poor - one sentence justification.",
+          "posture": "Concise physical orientation description.",
+          "confidence": "Expression assessment string.",
+          "overall": "One summary sentence."
         }
       }
     `;

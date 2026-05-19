@@ -2,15 +2,17 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   CheckCircle, AlertCircle, ArrowLeft, Download, Share2,
-  Target, Award, Clock, MessageSquare, ChevronRight, ChevronDown
+  Target, Award, Clock, MessageSquare, ChevronRight, ChevronDown, Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 interface Answer {
   id: number;
   userAnswer: string;
   score: number;
   feedback: string;
+  idealAnswer?: string;
   missingConcepts: string[];
   timeTakenSeconds: number;
   behavioralFeedback?: {
@@ -49,7 +51,7 @@ export default function Results() {
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        const res = await fetch(`/api/interview/${id}`);
+        const res = await apiFetch(`/api/interview/${id}`);
         if (!res.ok) throw new Error('Failed to fetch results');
         const json = await res.json();
         setData(json);
@@ -282,6 +284,17 @@ export default function Results() {
                             {answer?.feedback || "Evaluation pending."}
                           </p>
                         </div>
+
+                        {answer?.idealAnswer && (
+                          <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                            <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                              <Lightbulb size={12} /> Model Answer
+                            </p>
+                            <p className="text-amber-200/80 text-sm leading-relaxed italic">
+                              {answer.idealAnswer}
+                            </p>
+                          </div>
+                        )}
 
                         {answer?.missingConcepts?.length > 0 && (
                           <div>

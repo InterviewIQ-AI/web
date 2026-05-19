@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrainCircuit, Upload, PlayCircle, Loader2, X, ArrowRight, BarChart3, Zap, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../lib/api';
 
 const features = [
   {
@@ -42,9 +43,15 @@ export default function Home() {
     if (e) e.preventDefault();
     if (!jobRole.trim() || isLoading) return;
 
+    // Guard: must be signed in
+    if (!user) {
+      navigate('/sign-in', { state: { returnTo: '/' } });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const res = await fetch('/api/interview/start', {
+      const res = await apiFetch('/api/interview/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobRole: jobRole.trim() }),
@@ -167,7 +174,13 @@ export default function Home() {
           
           {/* Quick Practice Card */}
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              if (!user) {
+                navigate('/sign-in', { state: { returnTo: '/' } });
+                return;
+              }
+              setShowModal(true);
+            }}
             className="w-full md:w-72 h-64 flex flex-col items-center justify-center gap-5 bg-gray-900/40 backdrop-blur-md border border-gray-800 rounded-[2.5rem] hover:bg-gray-800/40 hover:border-purple-500/50 transition-all duration-300 group relative overflow-hidden"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />

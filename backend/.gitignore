@@ -9,6 +9,13 @@ node_modules/
 .env.test
 *.env
 
+# ─── Firebase Service Account Keys (NEVER commit) ─────
+*firebase*adminsdk*.json
+*service-account*.json
+
+# ─── One-time dev scripts ──────────────────────────────
+cleanup-test-data.js
+
 # ─── Build Output ──────────────────────────────────────
 dist/
 build/

@@ -1,113 +1,127 @@
 import {
-  Controller, Post, Get, Body, Param, ParseIntPipe, BadRequestException,
+  Controller, Post, Get, Body, Param, ParseIntPipe,
+  BadRequestException, UseGuards,
 } from '@nestjs/common';
 import { InterviewService } from './interview.service';
 import { AiService } from '../ai/ai.service';
+import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../auth/user.decorator';
+import type { AuthUser } from '../auth/user.decorator';
+import { UsersService } from '../users/users.service';
 
 @Controller('interview')
+@UseGuards(AuthGuard)
 export class InterviewController {
   constructor(
     private readonly interviewService: InterviewService,
     private readonly aiService: AiService,
+    private readonly usersService: UsersService,
   ) {}
+
+  // ─── Helper: resolve authenticated user to DB user id ────────────────────
+  private async resolveUserId(authUser: AuthUser): Promise<number> {
+    const dbUser = await this.usersService.upsertUser(
+      authUser.firebaseUid,
+      authUser.email,
+      authUser.name,
+    );
+    return dbUser.id;
+  }
 
   /**
    * POST /interview/start
    * Body: { jobRole: string }
-   * Generates questions with AI (no resume needed) and saves interview + questions to DB.
    */
   @Post('start')
-  async startInterview(@Body('jobRole') jobRole: string) {
+  async startInterview(
+    @Body('jobRole') jobRole: string,
+    @CurrentUser() authUser: AuthUser,
+  ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
 
+    const userId = await this.resolveUserId(authUser);
     const firstQuestion = await this.aiService.generateQuestionsForRole(jobRole);
-    const { interview, question } =
-      await this.interviewService.createInterview(jobRole, firstQuestion);
+    const { interview, question } = await this.interviewService.createInterview(jobRole, firstQuestion, userId);
 
-    const totalQuestions = Math.floor(Math.random() * 11) + 10; // 10 to 20
-
-    return {
-      interviewId: interview.id,
-      question,
-      totalQuestions,
-    };
+    const totalQuestions = Math.floor(Math.random() * 11) + 10;
+    return { interviewId: interview.id, question, totalQuestions };
   }
 
-  /** GET /interview — list all interviews */
+  /** GET /interview — list only this user's interviews */
   @Get()
-  getAllInterviews() {
-    return this.interviewService.getAllInterviews();
+  async getAllInterviews(@CurrentUser() authUser: AuthUser) {
+    const userId = await this.resolveUserId(authUser);
+    return this.interviewService.getAllInterviews(userId);
   }
 
-  /** GET /interview/:id — get a single interview with its questions */
+  /** GET /interview/:id — only accessible by the interview owner */
   @Get(':id')
-  getInterview(@Param('id', ParseIntPipe) id: number) {
-    return this.interviewService.getInterview(id);
+  async getInterview(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() authUser: AuthUser,
+  ) {
+    const userId = await this.resolveUserId(authUser);
+    return this.interviewService.getInterview(id, userId);
   }
 
   /**
    * POST /interview/create
-   * Body: { jobRole: string, questions: QuestionDto[] }
-   * Called after resume is processed — saves the interview + questions to DB.
+   * Called by resume upload flow with a pre-generated first question.
    */
   @Post('create')
   async createInterview(
     @Body('jobRole') jobRole: string,
     @Body('question') firstQuestion: any,
+    @CurrentUser() authUser: AuthUser,
   ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
     if (!firstQuestion) throw new BadRequestException('question object is required');
-    
-    const result = await this.interviewService.createInterview(jobRole, firstQuestion);
-    
-    return {
-      ...result,
-      totalQuestions: Math.floor(Math.random() * 11) + 10,
-    };
+
+    const userId = await this.resolveUserId(authUser);
+    const result = await this.interviewService.createInterview(jobRole, firstQuestion, userId);
+    return { ...result, totalQuestions: Math.floor(Math.random() * 11) + 10 };
   }
 
   /**
    * POST /interview/:id/next-question
    * Body: { history: [{question, answer}][] }
-   * Generates the next adaptive question based on the conversation so far.
    */
   @Post(':id/next-question')
-  getNextQuestion(
+  async getNextQuestion(
     @Param('id', ParseIntPipe) id: number,
     @Body('history') history: Array<{ question: string; answer: string }>,
+    @CurrentUser() authUser: AuthUser,
   ) {
-    return this.interviewService.addNextQuestion(id, history ?? []);
+    const userId = await this.resolveUserId(authUser);
+    return this.interviewService.addNextQuestion(id, history ?? [], userId);
   }
 
   /**
    * POST /interview/answer
-   * Body: { questionId, userAnswer, isVoice, timeTakenSeconds }
-   * Evaluates the answer using Gemini and saves it.
+   * Body: { questionId, userAnswer, isVoice, timeTakenSeconds, history, snapshots }
    */
   @Post('answer')
-  submitAnswer(
+  async submitAnswer(
     @Body('questionId') questionId: number,
     @Body('userAnswer') userAnswer: string,
     @Body('isVoice') isVoice: boolean,
     @Body('timeTakenSeconds') timeTakenSeconds: number,
     @Body('history') history: Array<{ question: string; answer: string }>,
     @Body('snapshots') snapshots: string[],
+    @CurrentUser() authUser: AuthUser,
   ) {
     if (!questionId) throw new BadRequestException('questionId is required');
     if (!userAnswer) throw new BadRequestException('userAnswer is required');
+
+    const userId = await this.resolveUserId(authUser);
     return this.interviewService.submitAnswer(
-      questionId,
-      userAnswer,
-      isVoice ?? false,
-      timeTakenSeconds ?? 0,
-      history,
-      snapshots
+      questionId, userAnswer, isVoice ?? false,
+      timeTakenSeconds ?? 0, userId, history, snapshots,
     );
   }
 
   /**
    * POST /interview/:id/complete
-   * Calculates final score and marks interview as COMPLETED.
    */
   @Post(':id/complete')
   completeInterview(@Param('id', ParseIntPipe) id: number) {

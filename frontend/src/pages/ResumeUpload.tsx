@@ -4,6 +4,7 @@ import {
   UploadCloud, FileText, X, Loader2, Sparkles, BrainCircuit,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 interface Question {
   id: number;
@@ -81,7 +82,7 @@ export default function ResumeUpload() {
         formData.append('jobDescription', jobDescription.trim());
       }
 
-      const res = await fetch('/api/resume/upload', {
+      const res = await apiFetch('/api/resume/upload', {
         method: 'POST',
         body: formData,
       });

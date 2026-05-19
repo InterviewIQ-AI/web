@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BrainCircuit, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -28,6 +28,8 @@ function GithubIcon() {
 export default function SignInPage() {
     const { signInWithGoogle, signInWithGithub, signInEmail } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const returnTo = (location.state as any)?.returnTo ?? '/dashboard';
     const [tab, setTab] = useState<'email' | 'social'>('social');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -41,7 +43,7 @@ export default function SignInPage() {
         try {
             if (provider === 'google') await signInWithGoogle();
             else await signInWithGithub();
-            navigate('/dashboard');
+            navigate(returnTo);
         } catch (e: any) {
             setError(e.message?.replace('Firebase: ', '') ?? 'Sign-in failed');
         } finally {
@@ -55,7 +57,7 @@ export default function SignInPage() {
         setError('');
         try {
             await signInEmail(email, password);
-            navigate('/dashboard');
+            navigate(returnTo);
         } catch (e: any) {
             setError(e.message?.replace('Firebase: ', '') ?? 'Invalid credentials');
         } finally {

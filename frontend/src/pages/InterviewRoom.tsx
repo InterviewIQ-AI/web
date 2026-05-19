@@ -3,9 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X, MessageSquare,
+  Code, User, Briefcase, X, MessageSquare, Lightbulb,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 // ─── Cross-browser MIME type detection ───────────────────────────────────────
 function getSupportedMimeType(): string {
@@ -39,6 +40,7 @@ interface LocationState {
 interface Evaluation {
   score: number;
   feedback: string;
+  idealAnswer?: string;
   missingConcepts: string[];
   behavioralFeedback?: {
     eyeContact: string;
@@ -386,7 +388,7 @@ export default function InterviewRoom() {
     ];
 
     try {
-      const res = await fetch('/api/interview/answer', {
+      const res = await apiFetch('/api/interview/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -443,7 +445,7 @@ export default function InterviewRoom() {
     setIsFetchingNext(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`/api/interview/${interviewId}/next-question`, {
+      const res = await apiFetch(`/api/interview/${interviewId}/next-question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ history: answeredHistoryRef.current }),
@@ -469,7 +471,7 @@ export default function InterviewRoom() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     try {
       if (interviewId) {
-        await fetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
+        await apiFetch(`/api/interview/${interviewId}/complete`, { method: 'POST' });
         localStorage.removeItem(`interview_state_${interviewId}`);
         localStorage.removeItem('active_interview_id');
         navigate(`/results/${interviewId}`);
@@ -501,10 +503,8 @@ export default function InterviewRoom() {
   }
 
   const categoryColor: Record<string, string> = {
-    TECHNICAL: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    MR: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    TECHNICAL:  'bg-blue-500/20 text-blue-400 border-blue-500/30',
     BEHAVIORAL: 'bg-green-500/20 text-green-400 border-green-500/30',
-    SYSTEM_DESIGN: 'bg-orange-500/10 text-orange-400',
   };
 
   return (
@@ -705,9 +705,8 @@ export default function InterviewRoom() {
           >
             <div className="flex items-center gap-3 mb-4">
               <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${categoryColor[currentQuestion.category] ?? 'bg-purple-500/10 text-purple-400 border-purple-500/20'}`}>
-                {currentQuestion.category === 'TECHNICAL' && <Code size={14} />}
-                {currentQuestion.category === 'HR' && <User size={14} />}
-                {currentQuestion.category === 'MR' && <Briefcase size={14} />}
+                {currentQuestion.category === 'TECHNICAL'  && <Code size={14} />}
+                {currentQuestion.category === 'BEHAVIORAL' && <User size={14} />}
                 <span className="text-xs font-bold tracking-wider">
                   {currentQuestion.category}
                 </span>
@@ -799,6 +798,17 @@ export default function InterviewRoom() {
             <div className="p-5 bg-gray-800/50 border border-gray-700 rounded-xl leading-relaxed text-gray-200">
               {evaluation.feedback}
             </div>
+
+            {evaluation.idealAnswer && (
+              <div className="p-5 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <Lightbulb size={12} /> Model Answer
+                </p>
+                <p className="text-amber-200/80 text-sm leading-relaxed italic">
+                  {evaluation.idealAnswer}
+                </p>
+              </div>
+            )}
 
             {evaluation.missingConcepts.length > 0 && (
               <div className="space-y-2">

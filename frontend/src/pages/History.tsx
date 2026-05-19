@@ -5,6 +5,7 @@ import {
   Calendar, Briefcase, Trash2, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiFetch } from '../lib/api';
 
 interface Interview {
   id: number;
@@ -24,7 +25,7 @@ export default function History() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await fetch('/api/interview');
+        const res = await apiFetch('/api/interview');
         if (!res.ok) throw new Error('Failed to fetch history');
         const data = await res.json();
         setInterviews(data);

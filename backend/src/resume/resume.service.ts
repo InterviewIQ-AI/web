@@ -15,7 +15,7 @@ export class ResumeService {
     private readonly interviewService: InterviewService,
   ) {}
 
-  async processResume(buffer: Buffer, jobRole: string, jobDescription?: string) {
+  async processResume(buffer: Buffer, jobRole: string, userId: number, jobDescription?: string) {
     // ── Step 1: Extract text from PDF ────────────────────────────────────────
     let resumeText: string;
     try {
@@ -30,7 +30,6 @@ export class ResumeService {
     }
 
     if (!resumeText || resumeText.length < 50) {
-      // Catches scanned/image-only PDFs that produce no extractable text
       this.logger.warn('Extracted resume text is too short — possible scanned PDF');
       throw new InternalServerErrorException(
         'Could not extract text from the PDF. ' +
@@ -49,7 +48,7 @@ export class ResumeService {
 
     // ── Step 3: Persist interview + first question to DB ──────────────────────
     const { interview, question: savedQuestion } =
-      await this.interviewService.createInterview(jobRole, firstQuestion);
+      await this.interviewService.createInterview(jobRole, firstQuestion, userId);
 
     this.logger.log(
       `Created interview #${interview.id} with first question #${savedQuestion.id}.`,
@@ -58,7 +57,7 @@ export class ResumeService {
     return {
       message: 'Resume processed successfully',
       interviewId: interview.id,
-      question: savedQuestion, // single first question for the interview room
+      question: savedQuestion,
       totalQuestions: Math.floor(Math.random() * 11) + 10,
     };
   }

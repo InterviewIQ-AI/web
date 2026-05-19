@@ -11,9 +11,18 @@ import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
+  firebaseUid: text('firebase_uid').unique().notNull(),
   email: text('email').unique().notNull(),
   name: text('name'),
+  // ─── Profile completion fields ───────────────────────────────────────────
+  phone: text('phone'),
+  currentRole: text('current_role'),
+  yearsOfExperience: integer('years_of_experience'),
+  targetRole: text('target_role'),
+  education: text('education'),
+  linkedinUrl: text('linkedin_url'),
   skills: jsonb('skills').default([]),
+  profileCompleted: boolean('profile_completed').default(false),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -22,6 +31,7 @@ export const interviews = pgTable('interviews', {
   userId: integer('user_id').notNull(),
   jobRole: text('job_role').notNull(),
   status: text('status').default('PENDING'), // PENDING, IN_PROGRESS, COMPLETED
+  sessionNumber: integer('session_number').default(1), // per user+role, used for spaced repetition
   finalScore: integer('final_score'),
   feedbackSummary: text('feedback_summary'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -31,7 +41,7 @@ export const questions = pgTable('questions', {
   id: serial('id').primaryKey(),
   interviewId: integer('interview_id').notNull(),
   questionText: text('question_text').notNull(),
-  category: text('category').notNull(), // TECHNICAL, BEHAVIORAL, SYSTEM_DESIGN
+  category: text('category').notNull(), // ENUM: 'TECHNICAL' | 'BEHAVIORAL'
   difficulty: integer('difficulty').default(3), // 1 to 5
   expectedConcepts: jsonb('expected_concepts').default([]),
   createdAt: timestamp('created_at').defaultNow(),
@@ -46,9 +56,24 @@ export const answers = pgTable('answers', {
   isVoice: boolean('is_voice').default(false),
   score: integer('score'),
   feedback: text('feedback'),
+  idealAnswer: text('ideal_answer'),
   missingConcepts: jsonb('missing_concepts').default([]),
   behavioralFeedback: jsonb('behavioral_feedback'),
   createdAt: timestamp('created_at').defaultNow(),
+});
+
+// ─── Spaced Repetition ────────────────────────────────────────────────────────
+// Per-user, per-concept performance for adaptive suppression / drill scheduling.
+export const questionPerformance = pgTable('question_performance', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull(),
+  jobRole: text('job_role').notNull(),
+  conceptTag: text('concept_tag').notNull(),
+  lastScore: integer('last_score').notNull(),
+  timesAnswered: integer('times_answered').default(1),
+  // Session number at which this concept becomes eligible again (0 = always eligible).
+  suppressUntilSession: integer('suppress_until_session').default(0),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // ─── Relations ────────────────────────────────────────────────────────────────

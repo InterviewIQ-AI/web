@@ -1,8 +1,9 @@
-import { Injectable, Inject, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { Injectable, Inject, Logger, NotFoundException, InternalServerErrorException, ForbiddenException } from '@nestjs/common';
+import { eq, desc, and } from 'drizzle-orm';
 import { DRIZZLE } from '../database/database.module';
 import { interviews, questions, answers } from '../database/schema';
 import { AiService } from '../ai/ai.service';
+import { SpacedRepetitionService } from './spaced-repetition.service';
 
 @Injectable()
 export class InterviewService {
@@ -11,13 +12,16 @@ export class InterviewService {
   constructor(
     @Inject(DRIZZLE) private db: any,
     private readonly aiService: AiService,
+    private readonly spacedRep: SpacedRepetitionService,
   ) {}
 
-  async createInterview(jobRole: string, firstQuestion: any) {
-    // For now use userId = 1 (guest user). Update when auth is added.
+  async createInterview(jobRole: string, firstQuestion: any, userId: number) {
+    // Count prior sessions for this user+role to compute session number
+    const sessionNumber = (await this.spacedRep.getSessionNumber(userId, jobRole)) + 1;
+
     const [interview] = await this.db
       .insert(interviews)
-      .values({ userId: 1, jobRole, status: 'IN_PROGRESS' })
+      .values({ userId, jobRole, status: 'IN_PROGRESS', sessionNumber })
       .returning();
 
     const [savedQuestion] = await this.db
@@ -37,6 +41,7 @@ export class InterviewService {
   async addNextQuestion(
     interviewId: number,
     history: Array<{ question: string; answer: string }>,
+    userId: number,
   ) {
     const interview = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
@@ -46,10 +51,14 @@ export class InterviewService {
       throw new NotFoundException(`Interview ${interviewId} not found`);
     }
 
-    const nextQ = await this.aiService.generateNextQuestion(
+    // Fetch spaced-repetition hints for this user+role
+    const hints = await this.spacedRep.getPerformanceHints(
+      userId,
       interview.jobRole,
-      history,
+      interview.sessionNumber ?? 1,
     );
+
+    const nextQ = await this.aiService.generateNextQuestion(interview.jobRole, history, hints);
 
     const [savedQuestion] = await this.db
       .insert(questions)
@@ -65,7 +74,7 @@ export class InterviewService {
     return { question: savedQuestion };
   }
 
-  async getInterview(interviewId: number) {
+  async getInterview(interviewId: number, userId?: number) {
     const interview = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
       with: {
@@ -79,6 +88,11 @@ export class InterviewService {
       throw new NotFoundException(`Interview ${interviewId} not found`);
     }
 
+    // Ownership check — if userId is provided, ensure the interview belongs to them
+    if (userId !== undefined && interview.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this interview');
+    }
+
     return interview;
   }
 
@@ -87,10 +101,10 @@ export class InterviewService {
     userAnswer: string,
     isVoice: boolean,
     timeTakenSeconds: number,
+    userId: number,
     history?: Array<{ question: string; answer: string }>,
-    snapshots?: string[], // New field
+    snapshots?: string[],
   ) {
-    // Get the question to evaluate against
     const question = await this.db.query.questions.findFirst({
       where: eq(questions.id, questionId),
     });
@@ -106,20 +120,33 @@ export class InterviewService {
 
     const expectedConcepts = (question.expectedConcepts as string[]) ?? [];
 
-    // Parallel processing: Evaluation + Next Question
+    // Fetch spaced-repetition hints for the pre-fetched next question
+    const hints = await this.spacedRep.getPerformanceHints(
+      userId,
+      interview?.jobRole ?? '',
+      interview?.sessionNumber ?? 1,
+    );
+
+    // Parallel: evaluate answer + pre-fetch next question (with spaced rep hints)
     const [evaluation, nextQ] = await Promise.all([
-      this.aiService.evaluateAnswer(
-        question.questionText,
-        expectedConcepts,
-        userAnswer,
-        snapshots,
-      ),
-      history && interview 
-        ? this.aiService.generateNextQuestion(interview.jobRole, history)
-        : Promise.resolve(null)
+      this.aiService.evaluateAnswer(question.questionText, expectedConcepts, userAnswer, snapshots),
+      history && interview
+        ? this.aiService.generateNextQuestion(interview.jobRole, history, hints)
+        : Promise.resolve(null),
     ]);
 
-    // Save answer with safety guards
+    // Record spaced repetition performance for this answer
+    if (evaluation?.score !== undefined) {
+      await this.spacedRep.recordPerformance(
+        userId,
+        interview?.jobRole ?? '',
+        interview?.sessionNumber ?? 1,
+        expectedConcepts,
+        evaluation.score,
+      ).catch((e) => this.logger.warn(`Spaced rep record failed: ${e.message}`));
+    }
+
+    // Save answer to DB
     try {
       const [answer] = await this.db
         .insert(answers)
@@ -130,12 +157,13 @@ export class InterviewService {
           timeTakenSeconds: Math.round(Number(timeTakenSeconds ?? 0)),
           score: Math.round(Number(evaluation?.score ?? 0)),
           feedback: evaluation?.feedback ?? 'Evaluation unavailable.',
+          idealAnswer: evaluation?.idealAnswer ?? null,
           missingConcepts: evaluation?.missingConcepts ?? [],
           behavioralFeedback: evaluation?.behavioralFeedback ?? null,
         })
         .returning();
 
-      // If we generated a next question, save it
+      // Save pre-fetched next question
       let savedNextQuestion = null;
       if (nextQ) {
         try {
@@ -162,7 +190,6 @@ export class InterviewService {
   }
 
   async completeInterview(interviewId: number) {
-    // Guard: make sure the interview actually exists before touching it
     const existing = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
     });
@@ -170,7 +197,6 @@ export class InterviewService {
       throw new NotFoundException(`Interview ${interviewId} not found`);
     }
 
-    // Calculate final score from all answers
     const interviewQuestions = await this.db.query.questions.findMany({
       where: eq(questions.interviewId, interviewId),
       with: { answers: true },
@@ -206,24 +232,19 @@ export class InterviewService {
       .returning();
 
     if (!updatedInterview) {
-      throw new InternalServerErrorException(
-        `Failed to mark interview ${interviewId} as completed`,
-      );
+      throw new InternalServerErrorException(`Failed to mark interview ${interviewId} as completed`);
     }
 
-    this.logger.log(
-      `Interview #${interviewId} completed. Final score: ${finalScore}/10`,
-    );
+    this.logger.log(`Interview #${interviewId} completed. Final score: ${finalScore}/10`);
 
     return { interview: updatedInterview, finalScore, feedbackSummary };
   }
 
-  async getAllInterviews() {
+  async getAllInterviews(userId: number) {
     return this.db.query.interviews.findMany({
+      where: eq(interviews.userId, userId),
       orderBy: [desc(interviews.createdAt)],
-      with: {
-        questions: true,
-      }
+      with: { questions: true },
     });
   }
 }
