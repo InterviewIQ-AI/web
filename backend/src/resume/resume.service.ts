@@ -15,7 +15,7 @@ export class ResumeService {
     private readonly interviewService: InterviewService,
   ) {}
 
-  async processResume(buffer: Buffer, jobRole: string, userId: number, jobDescription?: string) {
+  async processResume(buffer: Buffer, jobRole: string, userId: string, jobDescription?: string) {
     // ── Step 1: Extract text from PDF ────────────────────────────────────────
     let resumeText: string;
     try {

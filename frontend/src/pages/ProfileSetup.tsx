@@ -381,15 +381,7 @@ export default function ProfileSetup() {
                         )}
                     </div>
 
-                    {/* Skip link */}
-                    <p className="text-center text-xs text-gray-600 mt-4">
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            className="hover:text-gray-400 transition-colors"
-                        >
-                            Skip for now — I'll complete this later
-                        </button>
-                    </p>
+
                 </div>
             </motion.div>
         </div>

@@ -5,7 +5,6 @@ import {
     signOut,
     signInWithPopup,
     googleProvider,
-    githubProvider,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     updateProfile,
@@ -13,7 +12,7 @@ import {
 } from '../lib/firebase';
 
 export interface DbUser {
-    id: number;
+    id: string;
     email: string;
     name: string | null;
     phone: string | null;
@@ -33,7 +32,6 @@ interface AuthContextType {
     loading: boolean;        // Firebase auth resolving
     dbUserLoading: boolean;  // DB profile fetch in progress
     signInWithGoogle: () => Promise<void>;
-    signInWithGithub: () => Promise<void>;
     signInEmail: (email: string, password: string) => Promise<void>;
     signUpEmail: (email: string, password: string, name: string) => Promise<void>;
     logout: () => Promise<void>;
@@ -89,10 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signInWithPopup(auth, googleProvider);
     };
 
-    const signInWithGithub = async () => {
-        await signInWithPopup(auth, githubProvider);
-    };
-
     const signInEmail = async (email: string, password: string) => {
         await signInWithEmailAndPassword(auth, email, password);
     };
@@ -112,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return (
         <AuthContext.Provider value={{
             user, dbUser, loading, dbUserLoading,
-            signInWithGoogle, signInWithGithub, signInEmail, signUpEmail, logout, refreshDbUser,
+            signInWithGoogle, signInEmail, signUpEmail, logout, refreshDbUser,
         }}>
             {children}
         </AuthContext.Provider>

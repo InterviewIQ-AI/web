@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  CheckCircle, AlertCircle, ArrowLeft, Download, Share2,
+  AlertCircle, ArrowLeft, Download, Share2,
   Target, Award, Clock, MessageSquare, ChevronRight, ChevronDown, Lightbulb
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';

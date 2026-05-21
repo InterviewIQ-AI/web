@@ -15,7 +15,7 @@ export class InterviewService {
     private readonly spacedRep: SpacedRepetitionService,
   ) {}
 
-  async createInterview(jobRole: string, firstQuestion: any, userId: number) {
+  async createInterview(jobRole: string, firstQuestion: any, userId: string) {
     // Count prior sessions for this user+role to compute session number
     const sessionNumber = (await this.spacedRep.getSessionNumber(userId, jobRole)) + 1;
 
@@ -41,7 +41,7 @@ export class InterviewService {
   async addNextQuestion(
     interviewId: number,
     history: Array<{ question: string; answer: string }>,
-    userId: number,
+    userId: string,
   ) {
     const interview = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
@@ -74,7 +74,7 @@ export class InterviewService {
     return { question: savedQuestion };
   }
 
-  async getInterview(interviewId: number, userId?: number) {
+  async getInterview(interviewId: number, userId?: string) {
     const interview = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
       with: {
@@ -101,7 +101,7 @@ export class InterviewService {
     userAnswer: string,
     isVoice: boolean,
     timeTakenSeconds: number,
-    userId: number,
+    userId: string,
     history?: Array<{ question: string; answer: string }>,
     snapshots?: string[],
   ) {
@@ -240,7 +240,7 @@ export class InterviewService {
     return { interview: updatedInterview, finalScore, feedbackSummary };
   }
 
-  async getAllInterviews(userId: number) {
+  async getAllInterviews(userId: string) {
     return this.db.query.interviews.findMany({
       where: eq(interviews.userId, userId),
       orderBy: [desc(interviews.createdAt)],

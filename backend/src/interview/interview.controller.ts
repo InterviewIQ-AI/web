@@ -19,7 +19,7 @@ export class InterviewController {
   ) {}
 
   // ─── Helper: resolve authenticated user to DB user id ────────────────────
-  private async resolveUserId(authUser: AuthUser): Promise<number> {
+  private async resolveUserId(authUser: AuthUser): Promise<string> {
     const dbUser = await this.usersService.upsertUser(
       authUser.firebaseUid,
       authUser.email,
