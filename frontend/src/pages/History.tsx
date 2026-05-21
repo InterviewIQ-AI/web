@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Clock, Award, BarChart3, ChevronRight, Search, Filter, 
-  Calendar, Briefcase, Trash2, ArrowRight
+  Calendar, Briefcase, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../lib/api';

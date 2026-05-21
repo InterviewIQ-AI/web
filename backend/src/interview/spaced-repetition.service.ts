@@ -19,7 +19,7 @@ export class SpacedRepetitionService {
    * Returns the current session number for a user+role pair.
    * (Counts all interviews ever started for that role by this user.)
    */
-  async getSessionNumber(userId: number, jobRole: string): Promise<number> {
+  async getSessionNumber(userId: string, jobRole: string): Promise<number> {
     const rows = await this.db.query.interviews.findMany({
       where: and(
         eq(interviews.userId, userId),
@@ -34,7 +34,7 @@ export class SpacedRepetitionService {
    * expected concept of the answered question.
    */
   async recordPerformance(
-    userId: number,
+    userId: string,
     jobRole: string,
     currentSession: number,
     concepts: string[],
@@ -93,7 +93,7 @@ export class SpacedRepetitionService {
    * - drillConcepts: concepts the user struggles with; AI should emphasise these
    */
   async getPerformanceHints(
-    userId: number,
+    userId: string,
     jobRole: string,
     currentSession: number,
   ): Promise<{ suppressedConcepts: string[]; drillConcepts: string[] }> {

@@ -1,26 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Mic, MicOff, Send, Camera, CameraOff,
+  Mic, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X, MessageSquare, Lightbulb,
+  Code, User, Briefcase, X, Lightbulb,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../lib/api';
 
-// ─── Cross-browser MIME type detection ───────────────────────────────────────
-function getSupportedMimeType(): string {
-  const candidates = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/mp4',
-  ];
-  for (const type of candidates) {
-    if (MediaRecorder.isTypeSupported(type)) return type;
-  }
-  return '';
-}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Question {
@@ -56,25 +43,22 @@ export default function InterviewRoom() {
   const navigate = useNavigate();
   const state = location.state as LocationState | null;
 
-  const [interviewId, setInterviewId] = useState<number | null>(
-    state?.interviewId ?? (localStorage.getItem('active_interview_id') ? parseInt(localStorage.getItem('active_interview_id')!) : null)
-  );
+  const interviewId =
+    state?.interviewId ?? (localStorage.getItem('active_interview_id') ? parseInt(localStorage.getItem('active_interview_id')!) : null);
 
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(
     state?.question ?? null
   );
-  const [totalQuestions, setTotalQuestions] = useState(state?.totalQuestions ?? 10);
+  const totalQuestions = state?.totalQuestions ?? 10;
   const [questionNumber, setQuestionNumber] = useState(1);
   const [answer, setAnswer] = useState('');
   const [cameraOn, setCameraOn] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingNext, setIsFetchingNext] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
-  const [interimTranscript, setInterimTranscript] = useState('');
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([]); // Base64 images
@@ -129,10 +113,7 @@ export default function InterviewRoom() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const isVoiceAnswerRef = useRef(false);
-  const mimeTypeRef = useRef<string>('audio/webm');
   // Stores all answered Q&As for adaptive follow-up generation
   const answeredHistoryRef = useRef<Array<{ question: string; answer: string }>>([]);
 
@@ -222,7 +203,7 @@ export default function InterviewRoom() {
         }
       }
 
-      setInterimTranscript(interim);
+
 
       // Extract the full current transcript
       let currentFullText = '';

@@ -10,8 +10,7 @@ import {
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  firebaseUid: text('firebase_uid').unique().notNull(),
+  id: text('id').primaryKey(),
   email: text('email').unique().notNull(),
   name: text('name'),
   // ─── Profile completion fields ───────────────────────────────────────────
@@ -28,7 +27,7 @@ export const users = pgTable('users', {
 
 export const interviews = pgTable('interviews', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(),
+  userId: text('user_id').notNull(),
   jobRole: text('job_role').notNull(),
   status: text('status').default('PENDING'), // PENDING, IN_PROGRESS, COMPLETED
   sessionNumber: integer('session_number').default(1), // per user+role, used for spaced repetition
@@ -66,7 +65,7 @@ export const answers = pgTable('answers', {
 // Per-user, per-concept performance for adaptive suppression / drill scheduling.
 export const questionPerformance = pgTable('question_performance', {
   id: serial('id').primaryKey(),
-  userId: integer('user_id').notNull(),
+  userId: text('user_id').notNull(),
   jobRole: text('job_role').notNull(),
   conceptTag: text('concept_tag').notNull(),
   lastScore: integer('last_score').notNull(),
