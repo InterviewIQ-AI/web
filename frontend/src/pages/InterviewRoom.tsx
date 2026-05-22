@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Mic, Send, Camera, CameraOff,
+  Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X, Lightbulb,
+  Code, User, Briefcase, X, Lightbulb, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../lib/api';
@@ -63,6 +63,8 @@ export default function InterviewRoom() {
   const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([]); // Base64 images
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
+  const [showMicModal, setShowMicModal] = useState(false);
 
   // ─── Voice Settings ───
   const [showSettings, setShowSettings] = useState(false);
@@ -120,12 +122,16 @@ export default function InterviewRoom() {
   const isSubmittingRef = useRef(false);
   const evaluationRef = useRef<Evaluation | null>(null);
 
+  // Accumulates finalized transcript text across recognition sessions
+  const accumulatedTranscriptRef = useRef('');
+
   // Reset answer/evaluation when moving to a new question
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
     evaluationRef.current = null; // CRITICAL FIX: Clear the ref too!
     isSubmittingRef.current = false;
+    accumulatedTranscriptRef.current = ''; // Reset accumulated transcript for new question
     setStartTime(Date.now());
     window.speechSynthesis.cancel();
   }, [currentQuestion?.id]);
@@ -135,6 +141,70 @@ export default function InterviewRoom() {
     return () => { window.speechSynthesis.cancel(); };
   }, []);
 
+  // ─── Microphone Permission Check on Mount ───
+  useEffect(() => {
+    const checkMicPermission = async () => {
+      try {
+        // Check current permission state without triggering a prompt
+        if (navigator.permissions && navigator.permissions.query) {
+          const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
+
+          if (result.state === 'denied') {
+            setShowMicModal(true);
+          } else if (result.state === 'prompt') {
+            // Trigger the native browser permission popup
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              stream.getTracks().forEach(t => t.stop()); // Release immediately
+              setMicPermission('granted');
+            } catch {
+              setMicPermission('denied');
+              setShowMicModal(true);
+            }
+          }
+
+          // Listen for permission changes (user may change in site settings)
+          result.onchange = () => {
+            setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
+            if (result.state === 'granted') {
+              setShowMicModal(false);
+              setErrorMsg('');
+            }
+          };
+        } else {
+          // Permissions API not supported — try requesting directly
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(t => t.stop());
+            setMicPermission('granted');
+          } catch {
+            setMicPermission('denied');
+            setShowMicModal(true);
+          }
+        }
+      } catch {
+        setMicPermission('prompt');
+      }
+    };
+
+    checkMicPermission();
+  }, []);
+
+  const requestMicPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      setMicPermission('granted');
+      setShowMicModal(false);
+      setErrorMsg('');
+      // Restart listening after permission is granted
+      startContinuousListening();
+    } catch {
+      setMicPermission('denied');
+    }
+  };
+
   // Camera setup
   useEffect(() => {
     if (cameraOn) {
@@ -143,14 +213,9 @@ export default function InterviewRoom() {
         .then((stream) => {
           streamRef.current = stream;
           if (videoRef.current) videoRef.current.srcObject = stream;
-          setErrorMsg('');
         })
-        .catch(() => {
-          setIsSubmitting(true);
-          isSubmittingRef.current = true;
-          // Stop any active continuous recording
-          recognitionRef.current?.stop();
-          setIsRecording(false);
+        .catch((err) => {
+          console.warn('getUserMedia camera error:', err.name, err.message);
           setErrorMsg('Could not access camera. Check permissions.');
           setCameraOn(false);
         });
@@ -167,12 +232,15 @@ export default function InterviewRoom() {
   const lastSpokenIdRef = useRef<number | null>(null);
 
   // ─── Voice Recording (Real-time & Continuous) ─────────────────────────────
+  const [micError, setMicError] = useState<string>('');
+
   const startContinuousListening = useCallback(() => {
     if (evaluationRef.current || isSubmittingRef.current) return;
+    setMicError('');
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.warn('Speech Recognition not supported.');
+      setMicError('Speech Recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
       return;
     }
 
@@ -191,46 +259,69 @@ export default function InterviewRoom() {
       isVoiceAnswerRef.current = true;
     };
 
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      let interim = '';
+    // Track session-level finalized text so onend can save it
+    let lastSessionFinalText = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+    recognition.onresult = (event: any) => {
+      let sessionFinalText = '';
+      let interimText = '';
+
+      // Separate final vs interim results from this session
+      for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
+          sessionFinalText += (sessionFinalText ? ' ' : '') + event.results[i][0].transcript.trim();
         } else {
-          interim += event.results[i][0].transcript;
+          interimText += (interimText ? ' ' : '') + event.results[i][0].transcript.trim();
         }
       }
 
+      // Keep track of this session's finalized text for when onend fires
+      lastSessionFinalText = sessionFinalText;
 
+      // Build the full current text: accumulated (from previous sessions) + this session's finals + interim
+      const fullText = [accumulatedTranscriptRef.current, sessionFinalText, interimText]
+        .map(t => t.trim())
+        .filter(t => t.length > 0)
+        .join(' ');
 
-      // Extract the full current transcript
-      let currentFullText = '';
-      for (let i = 0; i < event.results.length; ++i) {
-        currentFullText += event.results[i][0].transcript;
-      }
-      
-      const rawText = currentFullText.trim();
-      
       // Basic AI voice stripping: if it exactly matches the start of the question, ignore it
       const qText = currentQuestion?.questionText || '';
-      if (rawText.toLowerCase() === qText.toLowerCase().substring(0, rawText.length)) {
-        return; 
+      if (fullText.toLowerCase() === qText.toLowerCase().substring(0, fullText.length)) {
+        return;
       }
 
-      setAnswer(rawText);
+      setAnswer(fullText);
     };
 
     recognition.onerror = (event: any) => {
       console.error('Speech error:', event.error);
       if (event.error === 'not-allowed') {
-        setErrorMsg('Microphone access denied. Please enable it in browser settings.');
+        setMicPermission('denied');
+        setShowMicModal(true);
+      } else {
+        setMicError(`Speech API Error: ${event.error}`);
+      }
+      // Save accumulated text before losing the session
+      if (lastSessionFinalText.trim()) {
+        accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, lastSessionFinalText]
+          .map(t => t.trim())
+          .filter(t => t.length > 0)
+          .join(' ');
+        lastSessionFinalText = '';
       }
       setIsRecording(false);
     };
 
     recognition.onend = () => {
+      // Save this session's finalized text into the accumulator before restarting
+      if (lastSessionFinalText.trim()) {
+        accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, lastSessionFinalText]
+          .map(t => t.trim())
+          .filter(t => t.length > 0)
+          .join(' ');
+        lastSessionFinalText = '';
+      }
+
       // Small delay before marking as not recording to allow HMR/State to settle
       setTimeout(() => setIsRecording(false), 100);
       
@@ -238,8 +329,8 @@ export default function InterviewRoom() {
       if (!evaluationRef.current && !isSubmittingRef.current && recognitionRef.current === recognition) {
         try {
           recognition.start();
-        } catch (e) {
-          // ignore
+        } catch (e: any) {
+          setMicError(`Restart failed: ${e.message}`);
         }
       }
     };
@@ -273,6 +364,9 @@ export default function InterviewRoom() {
     };
   }, [currentQuestion, cameraOn]);
 
+  // Stores the active utterance to prevent Chrome garbage collection bug
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   // ─── Speech Synthesis (humanized) ────────────────────────────────────────
   const speakQuestion = useCallback(() => {
     if (!currentQuestion || !window.speechSynthesis) return;
@@ -298,6 +392,8 @@ export default function InterviewRoom() {
 
     // Question: custom rate/pitch from settings
     const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
+    utteranceRef.current = questionU; // Keep reference to prevent GC bug
+
     applyVoice(questionU);
     questionU.rate = voiceRate;
     questionU.pitch = voicePitch;
@@ -464,10 +560,82 @@ export default function InterviewRoom() {
     }
   };
 
+  // ─── Microphone Permission Modal ──────────────────────────────────────────
+  const micPermissionModal = (
+    <AnimatePresence>
+      {showMicModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md p-6"
+        >
+          <motion.div
+            initial={{ scale: 0.85, y: 30 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.85, y: 30 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            className="bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-700/50 w-full max-w-md rounded-[2rem] p-8 shadow-2xl shadow-red-500/5"
+          >
+            {/* Icon */}
+            <div className="flex justify-center mb-6">
+              <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
+                <MicOff size={36} className="text-red-400" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="text-xl font-bold text-white text-center mb-2">
+              Microphone Access Required
+            </h3>
+            <p className="text-sm text-gray-400 text-center mb-8">
+              InterviewIQ needs your microphone to transcribe your answers in real-time.
+            </p>
+
+            {/* Instructions */}
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-5 mb-6 space-y-3">
+              <p className="text-xs font-bold text-gray-300 uppercase tracking-widest mb-3">How to enable:</p>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">1</span>
+                <p className="text-sm text-gray-300">Click the <span className="font-bold text-white">🔒 lock icon</span> in your browser's address bar</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">2</span>
+                <p className="text-sm text-gray-300">Find <span className="font-bold text-white">Microphone</span> and set it to <span className="font-bold text-green-400">Allow</span></p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">3</span>
+                <p className="text-sm text-gray-300">Click <span className="font-bold text-white">"Try Again"</span> below or refresh the page</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={requestMicPermission}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                <Mic size={20} />
+                Try Again
+              </button>
+              <button
+                onClick={() => setShowMicModal(false)}
+                className="w-full text-gray-500 hover:text-gray-300 font-medium py-3 rounded-2xl transition-colors text-sm flex items-center justify-center gap-2"
+              >
+                Continue without microphone
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   // ─── Guard ────────────────────────────────────────────────────────────────
   if (!currentQuestion) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8 bg-[#0a0a0f]">
+        {micPermissionModal}
         <div className="text-center text-gray-400 space-y-4">
           <AlertCircle size={48} className="mx-auto text-yellow-400" />
           <p className="text-xl font-medium">No interview session found.</p>
@@ -716,15 +884,33 @@ export default function InterviewRoom() {
             <div className="relative group">
               <textarea
                 value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
+                readOnly
                 placeholder="The interviewer is listening... your words will appear here as you speak."
-                className="w-full h-[450px] min-h-[400px] bg-gray-900/50 border border-gray-700 rounded-xl p-5 text-white placeholder-gray-500 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none text-lg leading-relaxed group-hover:border-gray-600 shadow-inner"
+                className="w-full h-[450px] min-h-[400px] bg-gray-900/50 border border-gray-700 rounded-xl p-5 text-white placeholder-gray-500 focus:outline-none transition-all resize-none text-lg leading-relaxed shadow-inner"
               />
-              <div className="absolute bottom-4 right-4 flex items-center gap-3">
-                {isRecording && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 rounded-full border border-red-500/30">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-medium text-red-400 uppercase tracking-wider">Listening</span>
+              <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+                <div className="flex items-center gap-3">
+                  {isRecording && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 rounded-full border border-red-500/30">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      <span className="text-xs font-medium text-red-400 uppercase tracking-wider">Listening</span>
+                    </div>
+                  )}
+
+                  {/* Fallback Manual Microphone Button */}
+                  {!isRecording && (
+                    <button
+                      onClick={startContinuousListening}
+                      className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg bg-gray-900/80"
+                    >
+                      <Mic size={14} />
+                      <span>Mic didn't start? Click to Listen</span>
+                    </button>
+                  )}
+                </div>
+                {micError && (
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg max-w-sm truncate" title={micError}>
+                    {micError}
                   </div>
                 )}
                 <span className={`text-xs font-medium font-mono ${answer.length > 500 ? 'text-orange-400' : 'text-gray-500'}`}>
