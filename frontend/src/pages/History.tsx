@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Clock, Award, BarChart3, ChevronRight, Search, Filter, 
-  Calendar, Briefcase, ArrowRight
+import {
+  Clock, Award, BarChart3, ChevronRight, Search, Filter,
+  Calendar, Briefcase, ArrowRight, TrendingUp,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend,
+} from 'recharts';
 import { apiFetch } from '../lib/api';
 
 interface Interview {
@@ -16,11 +20,15 @@ interface Interview {
   questions: any[];
 }
 
+// Palette for up to 6 distinct roles on the chart
+const ROLE_COLORS = ['#8b5cf6', '#38bdf8', '#34d399', '#f59e0b', '#f472b6', '#fb923c'];
+
 export default function History() {
   const navigate = useNavigate();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showChart, setShowChart] = useState(true);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -38,24 +46,56 @@ export default function History() {
     fetchHistory();
   }, []);
 
-  const filteredInterviews = interviews.filter(i => 
+  const filteredInterviews = interviews.filter(i =>
     i.jobRole.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const completed = interviews.filter(i => i.status === 'COMPLETED' && i.finalScore !== null);
+
   const stats = {
     total: interviews.length,
-    avgScore: interviews.length > 0 
-      ? (interviews.reduce((acc, curr) => acc + (curr.finalScore || 0), 0) / interviews.filter(i => i.finalScore !== null).length || 0).toFixed(1)
-      : 0,
-    completed: interviews.filter(i => i.status === 'COMPLETED').length
+    avgScore:
+      completed.length > 0
+        ? (completed.reduce((acc, curr) => acc + (curr.finalScore ?? 0), 0) / completed.length).toFixed(1)
+        : '0',
+    completedCount: completed.length,
   };
+
+  // ─── Build chart data ───────────────────────────────────────────────────────
+  // Unique roles (up to 6)
+  const uniqueRoles = [...new Set(completed.map(i => i.jobRole))].slice(0, 6);
+
+  // All dates sorted ascending (for completed only)
+  const sortedCompleted = [...completed].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  // Build per-date rows { date, Role1: score, Role2: score, ... }
+  const chartData = sortedCompleted.map((interview) => {
+    const label = new Date(interview.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const row: Record<string, any> = { date: label };
+    row[interview.jobRole] = interview.finalScore;
+    return row;
+  });
+
+  // Merge rows with the same date
+  const mergedChart: Record<string, any>[] = [];
+  const seen = new Map<string, number>();
+  for (const row of chartData) {
+    if (seen.has(row.date)) {
+      Object.assign(mergedChart[seen.get(row.date)!], row);
+    } else {
+      seen.set(row.date, mergedChart.length);
+      mergedChart.push({ ...row });
+    }
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f]">
-        <motion.div 
+        <motion.div
           animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
           className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full"
         />
       </div>
@@ -73,7 +113,7 @@ export default function History() {
       <div className="max-w-6xl mx-auto relative z-10">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
-            <motion.h1 
+            <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-4xl md:text-5xl font-bold mb-4"
@@ -88,9 +128,9 @@ export default function History() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-              <input 
-                type="text" 
-                placeholder="Search by role..." 
+              <input
+                type="text"
+                placeholder="Search by role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="bg-gray-900/50 border border-gray-800 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all w-full md:w-64 backdrop-blur-md"
@@ -104,10 +144,8 @@ export default function History() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}
             className="bg-gray-900/40 backdrop-blur-xl border border-gray-800/50 p-6 rounded-3xl"
           >
             <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400 mb-4">
@@ -117,10 +155,8 @@ export default function History() {
             <p className="text-3xl font-bold">{stats.avgScore}<span className="text-sm text-gray-500 ml-1">/ 10</span></p>
           </motion.div>
 
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
             className="bg-gray-900/40 backdrop-blur-xl border border-gray-800/50 p-6 rounded-3xl"
           >
             <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-400 mb-4">
@@ -130,21 +166,81 @@ export default function History() {
             <p className="text-3xl font-bold">{stats.total}</p>
           </motion.div>
 
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 }}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
             className="bg-gray-900/40 backdrop-blur-xl border border-gray-800/50 p-6 rounded-3xl"
           >
             <div className="w-12 h-12 bg-green-500/10 rounded-2xl flex items-center justify-center text-green-400 mb-4">
               <Clock size={24} />
             </div>
             <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-1">Completed</p>
-            <p className="text-3xl font-bold">{stats.completed}</p>
+            <p className="text-3xl font-bold">{stats.completedCount}</p>
           </motion.div>
         </div>
 
-        {/* List Section */}
+        {/* Score Trend Chart */}
+        {mergedChart.length >= 2 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gray-900/40 backdrop-blur-xl border border-gray-800/50 rounded-3xl p-8 mb-12"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <TrendingUp size={11} /> Score Trend
+                </p>
+                <h2 className="text-xl font-bold">Performance Over Time</h2>
+              </div>
+              <button
+                onClick={() => setShowChart(v => !v)}
+                className="text-xs font-bold text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                {showChart ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {showChart && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 280, opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                >
+                  <ResponsiveContainer width="100%" height={260}>
+                    <LineChart data={mergedChart} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                      <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={{ stroke: '#374151' }} />
+                      <YAxis domain={[0, 10]} tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={{ stroke: '#374151' }} />
+                      <Tooltip
+                        contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 12 }}
+                        labelStyle={{ color: '#e5e7eb', fontWeight: 700 }}
+                        formatter={(val: number, name: string) => [`${val}/10`, name]}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, color: '#9ca3af', paddingTop: 12 }}
+                      />
+                      {uniqueRoles.map((role, i) => (
+                        <Line
+                          key={role}
+                          type="monotone"
+                          dataKey={role}
+                          stroke={ROLE_COLORS[i % ROLE_COLORS.length]}
+                          strokeWidth={2.5}
+                          dot={{ fill: ROLE_COLORS[i % ROLE_COLORS.length], r: 4 }}
+                          activeDot={{ r: 6 }}
+                          connectNulls
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {/* Interview List */}
         <div className="space-y-4">
           <AnimatePresence>
             {filteredInterviews.length > 0 ? (
@@ -169,8 +265,8 @@ export default function History() {
                           {new Date(interview.createdAt).toLocaleDateString()}
                         </span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter border ${
-                          interview.status === 'COMPLETED' 
-                            ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                          interview.status === 'COMPLETED'
+                            ? 'bg-green-500/10 border-green-500/20 text-green-400'
                             : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
                         }`}>
                           {interview.status}
@@ -183,8 +279,9 @@ export default function History() {
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Score</p>
                       <p className={`text-2xl font-bold ${
-                        (interview.finalScore || 0) >= 8 ? 'text-green-400' : 
-                        (interview.finalScore || 0) >= 5 ? 'text-yellow-400' : 'text-red-400'
+                        (interview.finalScore ?? 0) >= 8 ? 'text-green-400'
+                        : (interview.finalScore ?? 0) >= 5 ? 'text-yellow-400'
+                        : 'text-red-400'
                       }`}>
                         {interview.finalScore !== null ? `${interview.finalScore}/10` : '--'}
                       </p>
@@ -198,7 +295,7 @@ export default function History() {
             ) : (
               <div className="text-center py-20 bg-gray-900/20 border border-dashed border-gray-800 rounded-3xl">
                 <p className="text-gray-500 italic">No interviews found. Start your first session today!</p>
-                <button 
+                <button
                   onClick={() => navigate('/dashboard')}
                   className="mt-4 flex items-center gap-2 mx-auto text-purple-400 font-bold hover:text-purple-300 transition-colors"
                 >

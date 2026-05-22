@@ -12,6 +12,8 @@ export interface ProfileUpdateDto {
   education?: string;
   linkedinUrl?: string;
   skills?: string[];
+  resumeText?: string;
+  resumeSummary?: string;
 }
 
 @Injectable()
@@ -31,10 +33,10 @@ export class UsersService {
     });
 
     if (existingById) {
-      // User exists with the correct Firebase UID. Update their email and name if needed.
+      // User exists — only sync email. Never overwrite a name the user set via PATCH /profile.
       const [updated] = await this.db
         .update(users)
-        .set({ email, name })
+        .set({ email })
         .where(eq(users.id, id))
         .returning({ id: users.id });
       return updated;
@@ -48,9 +50,10 @@ export class UsersService {
     if (existingByEmail) {
       const oldId = existingByEmail.id;
       
+      // Migrate old row to new Firebase UID — only update the id, not name
       const [updated] = await this.db
         .update(users)
-        .set({ id, name })
+        .set({ id })
         .where(eq(users.id, oldId))
         .returning({ id: users.id });
 
@@ -97,12 +100,5 @@ export class UsersService {
 
     this.logger.log(`Profile completed for firebase uid: ${id}`);
     return updated;
-  }
-
-  async getUserByFirebaseUid(id: string): Promise<{ id: string } | null> {
-    const user = await this.db.query.users.findFirst({
-      where: eq(users.id, id),
-    });
-    return user ?? null;
   }
 }

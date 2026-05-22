@@ -21,6 +21,8 @@ export const users = pgTable('users', {
   education: text('education'),
   linkedinUrl: text('linkedin_url'),
   skills: jsonb('skills').default([]),
+  resumeText: text('resume_text'),
+  resumeSummary: text('resume_summary'), // JSON string from AI extraction
   profileCompleted: boolean('profile_completed').default(false),
   createdAt: timestamp('created_at').defaultNow(),
 });
@@ -33,6 +35,7 @@ export const interviews = pgTable('interviews', {
   sessionNumber: integer('session_number').default(1), // per user+role, used for spaced repetition
   finalScore: integer('final_score'),
   feedbackSummary: text('feedback_summary'),
+  studyPlan: jsonb('study_plan'), // AI-generated 7-day study plan
   createdAt: timestamp('created_at').defaultNow(),
 });
 

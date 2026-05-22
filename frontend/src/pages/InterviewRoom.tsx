@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
   Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X, Lightbulb, RefreshCw,
+  Code, User, Briefcase, X, Lightbulb, RefreshCw, Pause, Play,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../lib/api';
@@ -46,9 +46,7 @@ export default function InterviewRoom() {
   const interviewId =
     state?.interviewId ?? (localStorage.getItem('active_interview_id') ? parseInt(localStorage.getItem('active_interview_id')!) : null);
 
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(
-    state?.question ?? null
-  );
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(state?.question ?? null);
   const totalQuestions = state?.totalQuestions ?? 10;
   const [questionNumber, setQuestionNumber] = useState(1);
   const [answer, setAnswer] = useState('');
@@ -61,10 +59,44 @@ export default function InterviewRoom() {
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
-  const [snapshots, setSnapshots] = useState<string[]>([]); // Base64 images
+  const [snapshots, setSnapshots] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
   const [showMicModal, setShowMicModal] = useState(false);
+
+  // ─── Timer state ───
+  const QUESTION_TIME = 120; // seconds
+  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Pause state ───
+  const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
+
+  // ─── Follow-up badge ───
+  const [isFollowUp, setIsFollowUp] = useState(false);
+
+  // ─── Typewriter effect ───
+  const [displayedText, setDisplayedText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Auto-submit trigger phrases ───
+  // Spoken at end of answer to trigger auto-submit without clicking
+  const TRIGGER_PHRASES = [
+    "that's all", "thats all", "that is all",
+    "i'm done", "im done", "i am done",
+    "that's it", "thats it", "that is it",
+    "submit answer", "submit",
+    "i'm finished", "im finished", "i am finished",
+    "that's my answer", "thats my answer",
+    "that's everything", "thats everything",
+    "end answer", "done",
+  ];
+
+  // Ref so recognition onresult can call the latest submitAnswer without stale closure
+  const submitAnswerRef = useRef<(override?: string) => Promise<void>>(() => Promise.resolve());
+  const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
 
   // ─── Voice Settings ───
   const [showSettings, setShowSettings] = useState(false);
@@ -125,16 +157,54 @@ export default function InterviewRoom() {
   // Accumulates finalized transcript text across recognition sessions
   const accumulatedTranscriptRef = useRef('');
 
-  // Reset answer/evaluation when moving to a new question
+  // Reset answer/evaluation and restart timer when moving to a new question
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
-    evaluationRef.current = null; // CRITICAL FIX: Clear the ref too!
+    evaluationRef.current = null;
     isSubmittingRef.current = false;
-    accumulatedTranscriptRef.current = ''; // Reset accumulated transcript for new question
+    accumulatedTranscriptRef.current = '';
     setStartTime(Date.now());
+    setIsFollowUp(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
     window.speechSynthesis.cancel();
+
+    // ─── Typewriter: animate question text character by character ───
+    if (typewriterRef.current) clearInterval(typewriterRef.current);
+    setDisplayedText('');
+    setIsTyping(true);
+    const fullText = currentQuestion?.questionText ?? '';
+    let charIndex = 0;
+    typewriterRef.current = setInterval(() => {
+      charIndex++;
+      setDisplayedText(fullText.slice(0, charIndex));
+      if (charIndex >= fullText.length) {
+        clearInterval(typewriterRef.current!);
+        setIsTyping(false);
+      }
+    }, 22);
+
+    // Reset and start countdown timer
+    setTimeLeft(QUESTION_TIME);
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    timerIntervalRef.current = setInterval(() => {
+      if (!isPausedRef.current) {
+        setTimeLeft(prev => Math.max(0, prev - 1));
+      }
+    }, 1000);
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
   }, [currentQuestion?.id]);
+
+  // Auto-submit when timer reaches 0
+  useEffect(() => {
+    if (timeLeft === 0 && answer.trim() && !isSubmitting && !evaluation) {
+      void submitAnswer();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft]);
 
   // Cancel speech on unmount
   useEffect(() => {
@@ -291,6 +361,35 @@ export default function InterviewRoom() {
       }
 
       setAnswer(fullText);
+
+      // ─── Trigger phrase detection ───
+      // Only fire on a finalized result (not interim)
+      if (sessionFinalText) {
+        const lowerFull = fullText.toLowerCase().trimEnd();
+        const matchedTrigger = TRIGGER_PHRASES.find(phrase =>
+          lowerFull.endsWith(phrase)
+        );
+
+        if (matchedTrigger && !evaluationRef.current && !isSubmittingRef.current) {
+          // Strip the trigger phrase from the answer
+          const stripped = fullText
+            .slice(0, lowerFull.lastIndexOf(matchedTrigger))
+            .trimEnd()
+            // Strip trailing punctuation before the phrase
+            .replace(/[,\.\s]+$/, '')
+            .trim();
+
+          if (stripped.length > 0) {
+            // Stop recognition immediately
+            try { recognition.onend = null; recognition.stop(); } catch {}
+            setIsRecording(false);
+            setAnswer(stripped);
+            setAutoSubmitTriggered(true);
+            // Call latest submitAnswer via ref with the stripped text
+            setTimeout(() => submitAnswerRef.current(stripped), 150);
+          }
+        }
+      }
     };
 
     recognition.onerror = (event: any) => {
@@ -325,8 +424,8 @@ export default function InterviewRoom() {
       // Small delay before marking as not recording to allow HMR/State to settle
       setTimeout(() => setIsRecording(false), 100);
       
-      // Restart if we're still in the answering phase and this is still the active recognition
-      if (!evaluationRef.current && !isSubmittingRef.current && recognitionRef.current === recognition) {
+      // Restart if we're still in the answering phase and not paused
+      if (!evaluationRef.current && !isSubmittingRef.current && !isPausedRef.current && recognitionRef.current === recognition) {
         try {
           recognition.start();
         } catch (e: any) {
@@ -444,8 +543,10 @@ export default function InterviewRoom() {
   }, [currentQuestion?.id, autoRead, speakQuestion, startContinuousListening]);
 
   // ─── Submit Answer ────────────────────────────────────────────────────────
-  const submitAnswer = async () => {
-    if (!answer.trim() || !currentQuestion) return;
+  const submitAnswer = async (overrideText?: string) => {
+    const answerText = overrideText ?? answer;
+    if (!answerText.trim() || !currentQuestion) return;
+    setAutoSubmitTriggered(false);
 
     // Stop recording if active
     if (isRecording) {
@@ -461,7 +562,7 @@ export default function InterviewRoom() {
     // Prepare history for pre-fetching next question in parallel
     const updatedHistory = [
       ...answeredHistoryRef.current,
-      { question: currentQuestion.questionText, answer: answer.trim() }
+      { question: currentQuestion.questionText, answer: answerText.trim() }
     ];
 
     try {
@@ -470,7 +571,7 @@ export default function InterviewRoom() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionId: currentQuestion.id,
-          userAnswer: answer.trim(),
+          userAnswer: answerText.trim(),
           isVoice: isVoiceAnswerRef.current,
           timeTakenSeconds,
           history: updatedHistory,
@@ -489,9 +590,12 @@ export default function InterviewRoom() {
         throw new Error(serverMsg);
       }
 
-      const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null };
+      const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null; isFollowUp?: boolean };
       setEvaluation(data.evaluation);
       evaluationRef.current = data.evaluation;
+      setIsFollowUp(data.isFollowUp ?? false);
+      // Stop the timer when answer is evaluated
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       
       // Update history reference IMMEDIATELY
       answeredHistoryRef.current = updatedHistory;
@@ -508,8 +612,10 @@ export default function InterviewRoom() {
       isSubmittingRef.current = false;
     }
   };
+  // Sync ref so recognition.onresult (stale closure) always calls the freshest submitAnswer
+  submitAnswerRef.current = submitAnswer;
 
-  // ─── Next Question (adaptive) ─────────────────────────────────────────────
+  // \u2500\u2500\u2500 Next Question (adaptive) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   const handleNextQuestion = async () => {
     // Use pre-fetched question if available for instant transition
     if (preFetchedQuestion) {
@@ -537,6 +643,23 @@ export default function InterviewRoom() {
     } finally {
       setIsFetchingNext(false);
     }
+  };
+
+  // ─── Pause / Resume ──────────────────────────────────────────────────────
+  const handlePause = () => {
+    setIsPaused(true);
+    isPausedRef.current = true;
+    window.speechSynthesis.cancel();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.onend = null; recognitionRef.current.stop(); } catch {}
+    }
+  };
+
+  const handleResume = () => {
+    setIsPaused(false);
+    isPausedRef.current = false;
+    if (autoRead) speakQuestion();
+    else startContinuousListening();
   };
 
   // ─── End Interview ────────────────────────────────────────────────────────
@@ -658,6 +781,39 @@ export default function InterviewRoom() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row gap-6 p-6 bg-[#0a0a0f]">
+
+      {/* ── Pause Overlay ── */}
+      <AnimatePresence>
+        {isPaused && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-lg"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-gray-900 border border-gray-700 rounded-[2rem] p-10 shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full mx-6"
+            >
+              <div className="w-20 h-20 rounded-full bg-yellow-500/10 border-2 border-yellow-500/30 flex items-center justify-center">
+                <Pause size={36} className="text-yellow-400" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-white">Interview Paused</h3>
+                <p className="text-gray-400 text-sm mt-2">Your mic and timer are paused. Resume when you're ready.</p>
+              </div>
+              <button
+                onClick={handleResume}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/20 w-full justify-center"
+              >
+                <Play size={20} /> Resume Interview
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Settings Modal ── */}
       <AnimatePresence>
@@ -852,7 +1008,8 @@ export default function InterviewRoom() {
             transition={{ duration: 0.3 }}
             className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg relative"
           >
-            <div className="flex items-center gap-3 mb-4">
+            {/* Category + Difficulty + Timer row */}
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
               <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${categoryColor[currentQuestion.category] ?? 'bg-purple-500/10 text-purple-400 border-purple-500/20'}`}>
                 {currentQuestion.category === 'TECHNICAL'  && <Code size={14} />}
                 {currentQuestion.category === 'BEHAVIORAL' && <User size={14} />}
@@ -864,6 +1021,52 @@ export default function InterviewRoom() {
                 Difficulty: {'★'.repeat(currentQuestion.difficulty)}{'☆'.repeat(5 - currentQuestion.difficulty)}
               </span>
 
+              {/* Follow-up badge */}
+              <AnimatePresence>
+                {isFollowUp && (
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-amber-500/10 text-amber-400 border-amber-500/30"
+                  >
+                    <Lightbulb size={11} /> Follow-up
+                  </motion.span>
+                )}
+              </AnimatePresence>
+
+              {/* Countdown timer ring */}
+              <div className="ml-auto flex items-center gap-2">
+                <div className="relative w-9 h-9">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="#1f2937" strokeWidth="3"/>
+                    <circle
+                      cx="18" cy="18" r="15" fill="none"
+                      stroke={timeLeft <= 10 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#8b5cf6'}
+                      strokeWidth="3"
+                      strokeDasharray="94.2"
+                      strokeDashoffset={94.2 - (94.2 * timeLeft) / QUESTION_TIME}
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s' }}
+                    />
+                  </svg>
+                  <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-bold ${
+                    timeLeft <= 10 ? 'text-red-400' : timeLeft <= 30 ? 'text-amber-400' : 'text-purple-400'
+                  }`}>
+                    {timeLeft}
+                  </span>
+                </div>
+                {/* Pause button */}
+                {!evaluation && (
+                  <button
+                    onClick={handlePause}
+                    className="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-full transition-all"
+                    title="Pause interview"
+                  >
+                    <Pause size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             <button
               onClick={speakQuestion}
@@ -873,7 +1076,10 @@ export default function InterviewRoom() {
               <Volume2 size={20} />
             </button>
             <h2 className="text-2xl font-bold text-white leading-relaxed pr-12">
-              {currentQuestion.questionText}
+              {displayedText}
+              {isTyping && (
+                <span className="inline-block w-0.5 h-6 bg-purple-400 ml-0.5 align-middle animate-pulse" />
+              )}
             </h2>
           </motion.div>
         </AnimatePresence>
@@ -894,6 +1100,14 @@ export default function InterviewRoom() {
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 rounded-full border border-red-500/30">
                       <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                       <span className="text-xs font-medium text-red-400 uppercase tracking-wider">Listening</span>
+                    </div>
+                  )}
+
+                  {/* Auto-submit indicator */}
+                  {autoSubmitTriggered && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 rounded-full border border-purple-500/30">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-ping" />
+                      <span className="text-xs font-medium text-purple-300 uppercase tracking-wider">Auto-submitting…</span>
                     </div>
                   )}
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { BrainCircuit, Loader2, Sparkles, ChevronRight, Calendar, Award, BarChart3, ArrowRight } from 'lucide-react';
+import { BrainCircuit, Loader2, Sparkles, ChevronRight, Calendar, Award, BarChart3, ArrowRight, FileText, UserCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -39,10 +39,13 @@ export default function Dashboard() {
   const [jobRole, setJobRole] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [resumeJobRole, setResumeJobRole] = useState('');
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState('');
   const [recentSessions, setRecentSessions] = useState<Interview[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, dbUser } = useAuth();
 
   // Fetch past sessions
   useEffect(() => {
@@ -90,11 +93,36 @@ export default function Dashboard() {
     }
   };
 
+  const handleStartFromResume = async () => {
+    if (!resumeJobRole.trim()) return;
+    setResumeLoading(true);
+    setResumeError('');
+    try {
+      const res = await apiFetch('/api/resume/start-from-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobRole: resumeJobRole.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { message?: string };
+        throw new Error(err.message ?? 'Failed to start interview');
+      }
+      const data = await res.json() as StartResponse;
+      navigate(`/interview/${data.interviewId}`, {
+        state: { interviewId: data.interviewId, question: data.question, totalQuestions: data.totalQuestions },
+      });
+    } catch (err: unknown) {
+      setResumeError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setResumeLoading(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') void handleStart();
   };
 
-  const displayName = user?.displayName?.split(' ')[0] ?? 'there';
+  const displayName = (dbUser?.name || user?.displayName)?.split(' ')[0] ?? 'there';
 
   return (
     <div className="min-h-screen p-6 md:p-10 relative overflow-hidden">
@@ -116,54 +144,125 @@ export default function Dashboard() {
           <p className="text-gray-500">Ready to practice? Start a new interview or review your progress below.</p>
         </motion.div>
 
-        {/* Start Interview Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl mb-10"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex items-center justify-center w-12 h-12 bg-purple-500/10 rounded-2xl">
-              <BrainCircuit size={28} className="text-purple-400" />
+        {/* Cards row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+          {/* ── Quick Start Card ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center justify-center w-12 h-12 bg-purple-500/10 rounded-2xl">
+                <BrainCircuit size={28} className="text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Quick Start</h2>
+                <p className="text-gray-500 text-sm">AI adapts 10–20 questions to your role</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">Start New Interview</h2>
-              <p className="text-gray-500 text-sm">AI adapts 10–20 questions to your role</p>
-            </div>
-          </div>
 
-          {errorMsg && (
-            <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-xl px-4 py-3">
-              {errorMsg}
-            </div>
-          )}
+            {errorMsg && (
+              <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-xl px-4 py-3">
+                {errorMsg}
+              </div>
+            )}
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              id="job-role-input"
-              type="text"
-              placeholder="e.g. Senior Frontend Developer"
-              value={jobRole}
-              onChange={(e) => setJobRole(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-              className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
-            />
-            <button
-              id="start-interview-btn"
-              onClick={handleStart}
-              disabled={!jobRole.trim() || isLoading}
-              className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_28px_rgba(147,51,234,0.4)] whitespace-nowrap"
-            >
-              {isLoading ? (
-                <><Loader2 className="animate-spin" size={18} />Generating…</>
-              ) : (
-                <><Sparkles size={18} />Generate Questions</>
-              )}
-            </button>
-          </div>
-        </motion.div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                id="job-role-input"
+                type="text"
+                placeholder="e.g. Senior Frontend Developer"
+                value={jobRole}
+                onChange={(e) => setJobRole(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleStart(); }}
+                disabled={isLoading}
+                className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
+              />
+              <button
+                id="start-interview-btn"
+                onClick={handleStart}
+                disabled={!jobRole.trim() || isLoading}
+                className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_28px_rgba(147,51,234,0.4)] whitespace-nowrap"
+              >
+                {isLoading ? (
+                  <><Loader2 className="animate-spin" size={18} />Generating…</>
+                ) : (
+                  <><Sparkles size={18} />Generate Questions</>
+                )}
+              </button>
+            </div>
+          </motion.div>
+
+          {/* ── Start from Resume Card ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-2xl">
+                <FileText size={28} className="text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Start from My Resume</h2>
+                <p className="text-gray-500 text-sm">AI tailors questions to your uploaded resume</p>
+              </div>
+            </div>
+
+            {dbUser?.resumeText ? (
+              <>
+                <div className="flex items-center gap-2 mb-4 bg-green-500/10 border border-green-500/30 rounded-xl px-3 py-2">
+                  <FileText size={14} className="text-green-400 flex-shrink-0" />
+                  <span className="text-green-400 text-xs font-medium">Resume on file · {Math.round(dbUser.resumeText.length / 100) / 10}k chars</span>
+                </div>
+
+                {resumeError && (
+                  <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-xl px-4 py-3">
+                    {resumeError}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    id="resume-job-role-input"
+                    type="text"
+                    placeholder="e.g. Senior Frontend Developer"
+                    value={resumeJobRole}
+                    onChange={(e) => setResumeJobRole(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleStartFromResume(); }}
+                    disabled={resumeLoading}
+                    className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50"
+                  />
+                  <button
+                    id="start-resume-interview-btn"
+                    onClick={handleStartFromResume}
+                    disabled={!resumeJobRole.trim() || resumeLoading}
+                    className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.25)] hover:shadow-[0_0_28px_rgba(59,130,246,0.4)] whitespace-nowrap"
+                  >
+                    {resumeLoading ? (
+                      <><Loader2 className="animate-spin" size={18} />Generating…</>
+                    ) : (
+                      <><Sparkles size={18} />Start Interview</>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-4 gap-3">
+                <p className="text-gray-500 text-sm">No resume uploaded yet.</p>
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 hover:text-blue-300 font-medium px-5 py-2.5 rounded-xl transition-all text-sm"
+                >
+                  <UserCircle size={16} /> Upload in Profile
+                </Link>
+              </div>
+            )}
+          </motion.div>
+        </div>
 
         {/* Recent Sessions */}
         <motion.div

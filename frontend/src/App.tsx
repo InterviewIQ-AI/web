@@ -3,12 +3,12 @@ import { useAuth } from './context/AuthContext';
 import Home from './pages/Home';
 import InterviewRoom from './pages/InterviewRoom';
 import Dashboard from './pages/Dashboard';
-import ResumeUpload from './pages/ResumeUpload';
 import Results from './pages/Results';
 import History from './pages/History';
 import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
 import ProfileSetup from './pages/ProfileSetup';
+import ProfilePage from './pages/ProfilePage';
 import Navbar from './components/Navbar';
 import { Loader2 } from 'lucide-react';
 
@@ -74,11 +74,11 @@ function App() {
 
             {/* ── Auth + completed profile required ──────────────────── */}
             <Route path="/dashboard"    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/resume"       element={<ProtectedRoute><ResumeUpload /></ProtectedRoute>} />
             <Route path="/interview/:id" element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
             <Route path="/interview"    element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
             <Route path="/results/:id"  element={<ProtectedRoute><Results /></ProtectedRoute>} />
             <Route path="/history"      element={<ProtectedRoute><History /></ProtectedRoute>} />
+            <Route path="/profile"      element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           </Routes>
         </div>
       </div>

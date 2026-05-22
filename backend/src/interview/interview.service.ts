@@ -16,7 +16,6 @@ export class InterviewService {
   ) {}
 
   async createInterview(jobRole: string, firstQuestion: any, userId: string) {
-    // Count prior sessions for this user+role to compute session number
     const sessionNumber = (await this.spacedRep.getSessionNumber(userId, jobRole)) + 1;
 
     const [interview] = await this.db
@@ -47,18 +46,15 @@ export class InterviewService {
       where: eq(interviews.id, interviewId),
     });
 
-    if (!interview) {
-      throw new NotFoundException(`Interview ${interviewId} not found`);
-    }
+    if (!interview) throw new NotFoundException(`Interview ${interviewId} not found`);
 
-    // Fetch spaced-repetition hints for this user+role
     const hints = await this.spacedRep.getPerformanceHints(
       userId,
       interview.jobRole,
       interview.sessionNumber ?? 1,
     );
 
-    const nextQ = await this.aiService.generateNextQuestion(interview.jobRole, history, hints);
+    const { question: nextQ } = await this.aiService.generateFollowUpOrNext(interview.jobRole, history, hints);
 
     const [savedQuestion] = await this.db
       .insert(questions)
@@ -84,11 +80,8 @@ export class InterviewService {
       },
     });
 
-    if (!interview) {
-      throw new NotFoundException(`Interview ${interviewId} not found`);
-    }
+    if (!interview) throw new NotFoundException(`Interview ${interviewId} not found`);
 
-    // Ownership check — if userId is provided, ensure the interview belongs to them
     if (userId !== undefined && interview.userId !== userId) {
       throw new ForbiddenException('You do not have access to this interview');
     }
@@ -109,9 +102,7 @@ export class InterviewService {
       where: eq(questions.id, questionId),
     });
 
-    if (!question) {
-      throw new NotFoundException(`Question ${questionId} not found`);
-    }
+    if (!question) throw new NotFoundException(`Question ${questionId} not found`);
 
     const interviewId = question.interviewId;
     const interview = await this.db.query.interviews.findFirst({
@@ -120,22 +111,21 @@ export class InterviewService {
 
     const expectedConcepts = (question.expectedConcepts as string[]) ?? [];
 
-    // Fetch spaced-repetition hints for the pre-fetched next question
     const hints = await this.spacedRep.getPerformanceHints(
       userId,
       interview?.jobRole ?? '',
       interview?.sessionNumber ?? 1,
     );
 
-    // Parallel: evaluate answer + pre-fetch next question (with spaced rep hints)
-    const [evaluation, nextQ] = await Promise.all([
+    // Parallel: evaluate answer + pre-fetch next/follow-up question
+    const [evaluation, followUpResult] = await Promise.all([
       this.aiService.evaluateAnswer(question.questionText, expectedConcepts, userAnswer, snapshots),
       history && interview
-        ? this.aiService.generateNextQuestion(interview.jobRole, history, hints)
+        ? this.aiService.generateFollowUpOrNext(interview.jobRole, history, hints)
         : Promise.resolve(null),
     ]);
 
-    // Record spaced repetition performance for this answer
+    // Record spaced repetition performance
     if (evaluation?.score !== undefined) {
       await this.spacedRep.recordPerformance(
         userId,
@@ -148,7 +138,7 @@ export class InterviewService {
 
     // Save answer to DB
     try {
-      const [answer] = await this.db
+      await this.db
         .insert(answers)
         .values({
           questionId: Number(questionId),
@@ -163,18 +153,21 @@ export class InterviewService {
         })
         .returning();
 
-      // Save pre-fetched next question
+      // Save pre-fetched next/follow-up question
       let savedNextQuestion = null;
-      if (nextQ) {
+      let isFollowUp = false;
+
+      if (followUpResult) {
+        isFollowUp = followUpResult.type === 'FOLLOWUP';
         try {
           [savedNextQuestion] = await this.db
             .insert(questions)
             .values({
               interviewId,
-              questionText: nextQ.questionText,
-              category: nextQ.category,
-              difficulty: nextQ.difficulty ?? 3,
-              expectedConcepts: nextQ.expectedConcepts ?? [],
+              questionText: followUpResult.question.questionText,
+              category: followUpResult.question.category,
+              difficulty: followUpResult.question.difficulty ?? 3,
+              expectedConcepts: followUpResult.question.expectedConcepts ?? [],
             })
             .returning();
         } catch (nextQError) {
@@ -182,7 +175,7 @@ export class InterviewService {
         }
       }
 
-      return { answer, evaluation, nextQuestion: savedNextQuestion };
+      return { evaluation, nextQuestion: savedNextQuestion, isFollowUp };
     } catch (dbError) {
       this.logger.error(`CRITICAL: Failed to save answer for question ${questionId}:`, dbError);
       throw new InternalServerErrorException('Failed to persist interview data. Please check database connectivity.');
@@ -193,9 +186,7 @@ export class InterviewService {
     const existing = await this.db.query.interviews.findFirst({
       where: eq(interviews.id, interviewId),
     });
-    if (!existing) {
-      throw new NotFoundException(`Interview ${interviewId} not found`);
-    }
+    if (!existing) throw new NotFoundException(`Interview ${interviewId} not found`);
 
     const interviewQuestions = await this.db.query.questions.findMany({
       where: eq(questions.interviewId, interviewId),
@@ -204,12 +195,18 @@ export class InterviewService {
 
     let totalScore = 0;
     let count = 0;
+    const qaForStudyPlan: Array<{ question: string; score: number; missingConcepts: string[] }> = [];
 
     for (const q of interviewQuestions) {
       for (const a of q.answers || []) {
         if (a.score !== null) {
           totalScore += a.score;
           count++;
+          qaForStudyPlan.push({
+            question: q.questionText,
+            score: a.score,
+            missingConcepts: (a.missingConcepts as string[]) ?? [],
+          });
         }
       }
     }
@@ -225,19 +222,36 @@ export class InterviewService {
             ? 'Average performance. Focus on strengthening core concepts.'
             : 'Needs significant improvement. Review fundamentals.';
 
-    const [updatedInterview] = await this.db
-      .update(interviews)
-      .set({ status: 'COMPLETED', finalScore, feedbackSummary })
-      .where(eq(interviews.id, interviewId))
-      .returning();
+    // Generate AI study plan in parallel with DB update
+    const [updatedInterview, studyPlan] = await Promise.all([
+      this.db
+        .update(interviews)
+        .set({ status: 'COMPLETED', finalScore, feedbackSummary })
+        .where(eq(interviews.id, interviewId))
+        .returning()
+        .then((rows: any[]) => rows[0]),
+      this.aiService.generateStudyPlan(existing.jobRole, qaForStudyPlan)
+        .catch((e) => {
+          this.logger.warn(`Study plan generation failed: ${e.message}`);
+          return null;
+        }),
+    ]);
 
     if (!updatedInterview) {
       throw new InternalServerErrorException(`Failed to mark interview ${interviewId} as completed`);
     }
 
-    this.logger.log(`Interview #${interviewId} completed. Final score: ${finalScore}/10`);
+    // Save study plan if generated successfully
+    if (studyPlan) {
+      await this.db
+        .update(interviews)
+        .set({ studyPlan })
+        .where(eq(interviews.id, interviewId))
+        .catch((e: any) => this.logger.warn(`Failed to save study plan: ${e.message}`));
+    }
 
-    return { interview: updatedInterview, finalScore, feedbackSummary };
+    this.logger.log(`Interview #${interviewId} completed. Final score: ${finalScore}/10`);
+    return { interview: updatedInterview, finalScore, feedbackSummary, studyPlan };
   }
 
   async getAllInterviews(userId: string) {

@@ -22,6 +22,8 @@ export interface DbUser {
     education: string | null;
     linkedinUrl: string | null;
     skills: string[];
+    resumeText: string | null;
+    resumeSummary: string | null;
     profileCompleted: boolean;
     createdAt: string;
 }
