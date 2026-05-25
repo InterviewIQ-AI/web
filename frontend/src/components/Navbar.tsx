@@ -1,19 +1,18 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { BrainCircuit, LayoutDashboard, Clock, UploadCloud, LogOut, ChevronDown } from 'lucide-react';
+import { BrainCircuit, LayoutDashboard, Clock, LogOut, ChevronDown, UserCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
   { to: '/dashboard', label: 'Quick Start', icon: LayoutDashboard },
-  { to: '/resume', label: 'Upload Resume', icon: UploadCloud },
   { to: '/history', label: 'History', icon: Clock },
 ];
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, dbUser, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -37,8 +36,10 @@ export default function Navbar() {
     setMenuOpen(false);
   };
 
-  const initials = user?.displayName
-    ? user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  // Prefer dbUser.name (editable) over Firebase displayName
+  const displayName = dbUser?.name || user?.displayName || user?.email;
+  const initials = displayName
+    ? displayName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.email?.[0].toUpperCase() ?? '?';
 
   return (
@@ -94,7 +95,7 @@ export default function Navbar() {
               </div>
             )}
             <span className="text-sm text-gray-300 max-w-[120px] truncate hidden sm:block">
-              {user.displayName ?? user.email}
+              {displayName}
             </span>
             <ChevronDown size={14} className={`text-gray-500 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -112,6 +113,14 @@ export default function Navbar() {
                   <p className="text-xs text-gray-500">Signed in as</p>
                   <p className="text-sm font-medium text-white truncate">{user.email}</p>
                 </div>
+                <NavLink
+                  to="/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-300 hover:bg-purple-500/10 hover:text-purple-300 transition-colors"
+                >
+                  <UserCircle size={15} />
+                  View Profile
+                </NavLink>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"

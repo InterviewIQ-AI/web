@@ -7,6 +7,7 @@ import {
   BadRequestException,
   PayloadTooLargeException,
   UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResumeService } from './resume.service';
@@ -23,6 +24,11 @@ export class ResumeController {
     private readonly usersService: UsersService,
   ) {}
 
+  /**
+   * POST /resume/upload
+   * Legacy: upload PDF + start interview in one shot.
+   * Still used for ad-hoc uploads (kept for backwards compat).
+   */
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -54,6 +60,37 @@ export class ResumeController {
 
     return this.resumeService.processResume(
       file.buffer,
+      jobRole.trim(),
+      dbUser.id,
+      jobDescription?.trim(),
+    );
+  }
+
+  /**
+   * POST /resume/start-from-profile
+   * Starts an interview using the resume text already stored in the user's profile.
+   * No file upload needed — the user uploaded their resume once via the Profile page.
+   */
+  @Post('start-from-profile')
+  async startFromProfile(
+    @Body('jobRole') jobRole: string,
+    @Body('jobDescription') jobDescription: string | undefined,
+    @CurrentUser() authUser: AuthUser,
+  ) {
+    if (!jobRole?.trim()) throw new BadRequestException('Job role is required');
+
+    const dbUser = await this.usersService.getMe(authUser.firebaseUid);
+    if (!dbUser) throw new NotFoundException('User profile not found');
+
+    const resumeText = (dbUser as any).resumeText as string | null;
+    if (!resumeText || resumeText.trim().length < 50) {
+      throw new BadRequestException(
+        'No resume found on your profile. Please upload your resume in the Profile page first.',
+      );
+    }
+
+    return this.resumeService.processResumeText(
+      resumeText,
       jobRole.trim(),
       dbUser.id,
       jobDescription?.trim(),

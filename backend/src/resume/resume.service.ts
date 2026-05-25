@@ -15,8 +15,8 @@ export class ResumeService {
     private readonly interviewService: InterviewService,
   ) {}
 
+  /** Parse PDF buffer → extract text → start interview. */
   async processResume(buffer: Buffer, jobRole: string, userId: string, jobDescription?: string) {
-    // ── Step 1: Extract text from PDF ────────────────────────────────────────
     let resumeText: string;
     try {
       const data = await pdfParse(buffer);
@@ -38,15 +38,22 @@ export class ResumeService {
     }
 
     this.logger.log(`Extracted ${resumeText.length} characters from resume.`);
+    return this.processResumeText(resumeText, jobRole, userId, jobDescription);
+  }
 
-    // ── Step 2: Generate first question via Gemini ────────────────────────────
+  /** Start an interview directly from pre-stored resume text (no PDF upload needed). */
+  async processResumeText(
+    resumeText: string,
+    jobRole: string,
+    userId: string,
+    jobDescription?: string,
+  ) {
     const firstQuestion = await this.aiService.generateQuestionsFromResume(
       resumeText,
       jobRole,
       jobDescription,
     );
 
-    // ── Step 3: Persist interview + first question to DB ──────────────────────
     const { interview, question: savedQuestion } =
       await this.interviewService.createInterview(jobRole, firstQuestion, userId);
 
