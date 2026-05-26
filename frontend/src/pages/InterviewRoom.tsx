@@ -53,12 +53,10 @@ export default function InterviewRoom() {
   const [cameraOn, setCameraOn] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFetchingNext, setIsFetchingNext] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
-  const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
@@ -154,6 +152,11 @@ export default function InterviewRoom() {
   const isSubmittingRef = useRef(false);
   const evaluationRef = useRef<Evaluation | null>(null);
 
+  // Ref to always read the latest answer without stale-closure issues in timer effects
+  const answerRef = useRef('');
+  // Ref to hold the snapshot capture interval so it can be cleared on unmount
+  const captureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Accumulates finalized transcript text across recognition sessions
   const accumulatedTranscriptRef = useRef('');
 
@@ -172,10 +175,11 @@ export default function InterviewRoom() {
 
     // ─── Typewriter: animate question text character by character ───
     if (typewriterRef.current) clearInterval(typewriterRef.current);
-    setDisplayedText('');
+    const fullText = (currentQuestion?.questionText ?? '').trim();
+    // Show the first character immediately (no blank frame before the first tick)
+    setDisplayedText(fullText.slice(0, 1));
     setIsTyping(true);
-    const fullText = currentQuestion?.questionText ?? '';
-    let charIndex = 0;
+    let charIndex = 1;
     typewriterRef.current = setInterval(() => {
       charIndex++;
       setDisplayedText(fullText.slice(0, charIndex));
@@ -198,17 +202,23 @@ export default function InterviewRoom() {
     };
   }, [currentQuestion?.id]);
 
-  // Auto-submit when timer reaches 0
+  // Auto-submit when timer reaches 0 (answerRef avoids stale closure on answer state)
   useEffect(() => {
-    if (timeLeft === 0 && answer.trim() && !isSubmitting && !evaluation) {
+    if (timeLeft === 0 && answerRef.current.trim() && !isSubmitting && !evaluation) {
       void submitAnswer();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft]);
 
-  // Cancel speech on unmount
+  // Keep answerRef in sync so the timer effect always reads the latest value
+  useEffect(() => { answerRef.current = answer; }, [answer]);
+
+  // Cancel speech and clear snapshot interval on unmount
   useEffect(() => {
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      window.speechSynthesis.cancel();
+      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
+    };
   }, []);
 
   // ─── Microphone Permission Check on Mount ───
@@ -354,9 +364,13 @@ export default function InterviewRoom() {
         .filter(t => t.length > 0)
         .join(' ');
 
-      // Basic AI voice stripping: if it exactly matches the start of the question, ignore it
+      // TTS echo filter: reject the transcript if it is a contiguous substring of the question.
+      // This catches both clean prefix echoes ("introduce yourself and") and mid-word echoes
+      // ("uce yourself and") that occur when the mic starts while TTS audio is still fading.
       const qText = currentQuestion?.questionText || '';
-      if (fullText.toLowerCase() === qText.toLowerCase().substring(0, fullText.length)) {
+      const qNorm = qText.toLowerCase().replace(/\s+/g, ' ').trim();
+      const tNorm = fullText.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (tNorm.length > 0 && tNorm.length <= qNorm.length && qNorm.includes(tNorm)) {
         return;
       }
 
@@ -365,28 +379,34 @@ export default function InterviewRoom() {
       // ─── Trigger phrase detection ───
       // Only fire on a finalized result (not interim)
       if (sessionFinalText) {
-        const lowerFull = fullText.toLowerCase().trimEnd();
+        // Strip ALL trailing punctuation/spaces before matching so
+        // "that's all." and "that's all!" also match "that's all"
+        const normalised = fullText.toLowerCase().replace(/[.,!?;:\s]+$/, '').trimEnd();
+
         const matchedTrigger = TRIGGER_PHRASES.find(phrase =>
-          lowerFull.endsWith(phrase)
+          normalised.endsWith(phrase)
         );
 
+        console.log('[AutoSubmit] normalised:', normalised, '| matched:', matchedTrigger ?? 'none');
+
         if (matchedTrigger && !evaluationRef.current && !isSubmittingRef.current) {
-          // Strip the trigger phrase from the answer
+          // Strip the trigger phrase from the answer text
+          const triggerIndex = normalised.lastIndexOf(matchedTrigger);
           const stripped = fullText
-            .slice(0, lowerFull.lastIndexOf(matchedTrigger))
-            .trimEnd()
-            // Strip trailing punctuation before the phrase
-            .replace(/[,\.\s]+$/, '')
+            .slice(0, triggerIndex)
+            .replace(/[,.\s]+$/, '')
             .trim();
 
-          if (stripped.length > 0) {
-            // Stop recognition immediately
-            try { recognition.onend = null; recognition.stop(); } catch {}
-            setIsRecording(false);
-            setAnswer(stripped);
+          // Stop recognition immediately
+          try { recognition.onend = null; recognition.stop(); } catch { /* already stopped */ }
+          setIsRecording(false);
+
+          // Use stripped text if there's content, otherwise use whatever was said
+          const finalAnswer = stripped.length > 0 ? stripped : accumulatedTranscriptRef.current.trim();
+          if (finalAnswer.length > 0) {
+            setAnswer(finalAnswer);
             setAutoSubmitTriggered(true);
-            // Call latest submitAnswer via ref with the stripped text
-            setTimeout(() => submitAnswerRef.current(stripped), 150);
+            void submitAnswerRef.current(finalAnswer);
           }
         }
       }
@@ -394,13 +414,51 @@ export default function InterviewRoom() {
 
     recognition.onerror = (event: any) => {
       console.error('Speech error:', event.error);
-      if (event.error === 'not-allowed') {
-        setMicPermission('denied');
-        setShowMicModal(true);
-      } else {
-        setMicError(`Speech API Error: ${event.error}`);
+
+      // Map each error code to a clear, actionable message
+      switch (event.error) {
+        case 'not-allowed':
+        case 'permission-denied':
+          setMicPermission('denied');
+          setShowMicModal(true);
+          break;
+
+        case 'no-speech':
+          // Completely normal — user just hasn't spoken yet. Don't show any error.
+          // onend will restart recognition automatically.
+          break;
+
+        case 'aborted':
+          // Triggered when we manually call recognition.stop() — not a real error.
+          break;
+
+        case 'audio-capture':
+          setMicError('No microphone detected. Please plug in a mic and refresh the page.');
+          break;
+
+        case 'network':
+          // Chrome Speech API requires internet. Retry silently once.
+          setMicError('');
+          setTimeout(() => {
+            try { recognition.start(); } catch { /* already handled by onend */ }
+          }, 1000);
+          break;
+
+        case 'service-not-allowed':
+          setMicError('Speech recognition is not allowed. Make sure you are using HTTPS or localhost, and that the browser has mic permission.');
+          break;
+
+        case 'bad-grammar':
+        case 'language-not-supported':
+          setMicError('Speech language not supported. Try switching your browser language to English.');
+          break;
+
+        default:
+          // Only show an error for truly unknown codes
+          setMicError(`Microphone error (${event.error}). Try refreshing the page or clicking the mic button below.`);
       }
-      // Save accumulated text before losing the session
+
+      // Save any partial transcript before the session ends
       if (lastSessionFinalText.trim()) {
         accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, lastSessionFinalText]
           .map(t => t.trim())
@@ -441,8 +499,8 @@ export default function InterviewRoom() {
       console.error('Failed to start recognition:', e);
     }
 
-    // Capture snapshots for behavioral analysis
-    const captureInterval = setInterval(() => {
+    // Capture snapshots for behavioral analysis (stored in ref so unmount effect can clear it)
+    captureIntervalRef.current = setInterval(() => {
       if (!videoRef.current || !canvasRef.current || !cameraOn) return;
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -459,7 +517,7 @@ export default function InterviewRoom() {
     return () => {
       recognition.onend = null;
       recognition.stop();
-      clearInterval(captureInterval);
+      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
     };
   }, [currentQuestion, cameraOn]);
 
@@ -485,10 +543,6 @@ export default function InterviewRoom() {
       if (preferred) u.voice = preferred;
     };
 
-    const silentHandler = (e: SpeechSynthesisErrorEvent) => {
-      if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
-    };
-
     // Question: custom rate/pitch from settings
     const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
     utteranceRef.current = questionU; // Keep reference to prevent GC bug
@@ -497,13 +551,13 @@ export default function InterviewRoom() {
     questionU.rate = voiceRate;
     questionU.pitch = voicePitch;
     questionU.volume = 1.0;
-    questionU.onerror = silentHandler;
 
-    // Start listening as soon as the question finishes speaking or if it fails
-    questionU.onend = () => { startContinuousListening(); };
-    questionU.onerror = () => { 
+    // Delay mic start slightly after TTS so the speaker audio has fully faded
+    // before recognition begins (prevents TTS echo from being transcribed as the answer)
+    questionU.onend = () => { setTimeout(() => startContinuousListening(), 400); };
+    questionU.onerror = () => {
       console.warn('SpeechSynthesis error, starting mic anyway');
-      startContinuousListening(); 
+      setTimeout(() => startContinuousListening(), 200);
     };
 
     const startSpeaking = () => {
@@ -591,18 +645,29 @@ export default function InterviewRoom() {
       }
 
       const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null; isFollowUp?: boolean };
-      setEvaluation(data.evaluation);
+
+      // Store evaluation (still used for results page) but DON'T show it mid-interview
       evaluationRef.current = data.evaluation;
       setIsFollowUp(data.isFollowUp ?? false);
-      // Stop the timer when answer is evaluated
+
+      // Stop the timer
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      
-      // Update history reference IMMEDIATELY
+
+      // Update history
       answeredHistoryRef.current = updatedHistory;
 
       if (data.nextQuestion) {
-        setPreFetchedQuestion(data.nextQuestion);
+        // Auto-advance to next question immediately
+        setCurrentQuestion(data.nextQuestion);
+        setQuestionNumber((n) => n + 1);
+        setAnswer('');
+        accumulatedTranscriptRef.current = '';
+        setStartTime(Date.now());
+      } else {
+        // No more questions → complete the interview and go to results
+        await handleEndInterview();
       }
+
       isVoiceAnswerRef.current = false;
       recognitionRef.current?.stop();
     } catch (err: unknown) {
@@ -616,34 +681,7 @@ export default function InterviewRoom() {
   submitAnswerRef.current = submitAnswer;
 
   // \u2500\u2500\u2500 Next Question (adaptive) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  const handleNextQuestion = async () => {
-    // Use pre-fetched question if available for instant transition
-    if (preFetchedQuestion) {
-      setCurrentQuestion(preFetchedQuestion);
-      setQuestionNumber((n) => n + 1);
-      setPreFetchedQuestion(null);
-      return;
-    }
 
-    setIsFetchingNext(true);
-    setErrorMsg('');
-    try {
-      const res = await apiFetch(`/api/interview/${interviewId}/next-question`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: answeredHistoryRef.current }),
-      });
-
-      if (!res.ok) throw new Error('Failed to fetch next question');
-      const data = await res.json() as { question: Question };
-      setCurrentQuestion(data.question);
-      setQuestionNumber((n) => n + 1);
-    } catch (err: unknown) {
-      setErrorMsg('Could not load next question. Please try again.');
-    } finally {
-      setIsFetchingNext(false);
-    }
-  };
 
   // ─── Pause / Resume ──────────────────────────────────────────────────────
   const handlePause = () => {
@@ -1035,8 +1073,18 @@ export default function InterviewRoom() {
                 )}
               </AnimatePresence>
 
-              {/* Countdown timer ring */}
+              {/* Countdown timer ring + Speaker + Pause — all in one row, no overlap */}
               <div className="ml-auto flex items-center gap-2">
+                {/* Speaker button */}
+                <button
+                  onClick={speakQuestion}
+                  className="w-9 h-9 flex items-center justify-center bg-gray-800/70 hover:bg-gray-700 text-gray-400 hover:text-purple-400 rounded-full transition-all"
+                  title="Read Question Aloud"
+                >
+                  <Volume2 size={16} />
+                </button>
+
+                {/* Timer ring */}
                 <div className="relative w-9 h-9">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                     <circle cx="18" cy="18" r="15" fill="none" stroke="#1f2937" strokeWidth="3"/>
@@ -1056,6 +1104,7 @@ export default function InterviewRoom() {
                     {timeLeft}
                   </span>
                 </div>
+
                 {/* Pause button */}
                 {!evaluation && (
                   <button
@@ -1068,14 +1117,7 @@ export default function InterviewRoom() {
                 )}
               </div>
             </div>
-            <button
-              onClick={speakQuestion}
-              className="absolute top-8 right-8 text-gray-500 hover:text-purple-400 transition-colors bg-gray-800/50 p-2 rounded-full"
-              title="Read Question Aloud"
-            >
-              <Volume2 size={20} />
-            </button>
-            <h2 className="text-2xl font-bold text-white leading-relaxed pr-12">
+            <h2 className="text-2xl font-bold text-white leading-relaxed mt-1">
               {displayedText}
               {isTyping && (
                 <span className="inline-block w-0.5 h-6 bg-purple-400 ml-0.5 align-middle animate-pulse" />
@@ -1084,8 +1126,8 @@ export default function InterviewRoom() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Answer Area — hidden after evaluation */}
-        {!evaluation ? (
+        {/* Answer Area */}
+        {!isSubmitting ? (
           <div className="flex-1 flex flex-col gap-6">
             <div className="relative group">
               <textarea
@@ -1133,110 +1175,65 @@ export default function InterviewRoom() {
               </div>
             </div>
 
-            <div className="flex justify-end items-center gap-4">
-              {/* Fallback Manual Microphone Button */}
-              {!isRecording && (
-                <button
-                  onClick={startContinuousListening}
-                  className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg"
-                >
-                  <Mic size={14} />
-                  <span>Mic didn't start? Click to Listen</span>
-                </button>
-              )}
-
+            <div className="flex justify-between items-center gap-3 mt-2">
+              {/* Left: End Interview */}
               <button
-                onClick={submitAnswer}
-                disabled={!answer.trim() || isSubmitting}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-10 py-4 rounded-xl transition-all font-bold shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed transform active:scale-95 border border-purple-400/30"
+                onClick={handleEndInterview}
+                disabled={isEnding || isSubmitting}
+                className="flex items-center gap-2 px-5 py-3.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? (
-                  <><Loader2 size={20} className="animate-spin" /><span>Evaluating...</span></>
-                ) : (
-                  <><span>Submit Answer</span><Send size={20} /></>
-                )}
+                <LogOut size={16} />
+                End Interview
               </button>
+
+              {/* Center: Pause */}
+              <button
+                onClick={handlePause}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-5 py-3.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Pause size={16} />
+                Pause
+              </button>
+
+              <div className="flex items-center gap-3 ml-auto">
+                {/* Fallback mic button */}
+                {!isRecording && (
+                  <button
+                    onClick={startContinuousListening}
+                    className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg"
+                  >
+                    <Mic size={14} />
+                    <span>Mic didn't start? Click to Listen</span>
+                  </button>
+                )}
+
+                {/* Submit */}
+                <button
+                  onClick={submitAnswer}
+                  disabled={!answer.trim() || isSubmitting}
+                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-10 py-4 rounded-xl transition-all font-bold shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed transform active:scale-95 border border-purple-400/30"
+                >
+                  {isSubmitting ? (
+                    <><Loader2 size={20} className="animate-spin" /><span>Saving…</span></>
+                  ) : (
+                    <><span>Submit Answer</span><Send size={20} /></>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         ) : (
-          /* Evaluation Result */
+          /* Submitting — show a brief transition state instead of evaluation card */
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg space-y-5"
+            className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg flex items-center justify-center"
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-gray-100 flex items-center gap-2">
-                <CheckCircle size={22} className="text-green-400" />
-                Answer Saved &amp; Evaluated
-              </h3>
-              <div className="px-4 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-full">
-                <span className="text-purple-400 font-bold text-lg">{evaluation.score}</span>
-                <span className="text-gray-500 text-sm ml-1">/ 10</span>
-              </div>
-            </div>
-
-            <div className="p-5 bg-gray-800/50 border border-gray-700 rounded-xl leading-relaxed text-gray-200">
-              {evaluation.feedback}
-            </div>
-
-            {evaluation.idealAnswer && (
-              <div className="p-5 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-                <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <Lightbulb size={12} /> Model Answer
-                </p>
-                <p className="text-amber-200/80 text-sm leading-relaxed italic">
-                  {evaluation.idealAnswer}
-                </p>
-              </div>
-            )}
-
-            {evaluation.missingConcepts.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">Improvement Areas</p>
-                <div className="flex flex-wrap gap-2">
-                  {evaluation.missingConcepts.map((concept) => (
-                    <span key={concept} className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-medium">
-                      {concept}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {evaluation.behavioralFeedback && (
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl">
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Eye Contact</p>
-                  <p className="text-sm text-gray-300">{evaluation.behavioralFeedback.eyeContact}</p>
-                </div>
-                <div className="p-4 bg-green-500/5 border border-green-500/10 rounded-xl">
-                  <p className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-1">Confidence</p>
-                  <p className="text-sm text-gray-300">{evaluation.behavioralFeedback.confidence}</p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3 pt-6 border-t border-gray-800">
-              <button
-                onClick={handleEndInterview}
-                disabled={isEnding}
-                className="flex items-center gap-2 px-6 py-3 text-gray-400 hover:text-white transition-colors text-sm font-medium"
-              >
-                <LogOut size={18} />
-                End Session
-              </button>
-              <button
-                onClick={handleNextQuestion}
-                disabled={isFetchingNext}
-                className="flex items-center gap-2 bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-xl transition-all font-bold shadow-lg"
-              >
-                {isFetchingNext ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <>Next Question <ArrowRight size={18} /></>
-                )}
-              </button>
+            <div className="flex flex-col items-center gap-4 text-center">
+              <Loader2 size={36} className="animate-spin text-purple-400" />
+              <p className="text-gray-400 text-lg font-medium">Saving your answer…</p>
+              <p className="text-gray-600 text-sm">Next question coming right up</p>
             </div>
           </motion.div>
         )}
