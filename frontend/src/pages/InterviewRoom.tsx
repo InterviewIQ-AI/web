@@ -53,12 +53,10 @@ export default function InterviewRoom() {
   const [cameraOn, setCameraOn] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFetchingNext, setIsFetchingNext] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
-  const [preFetchedQuestion, setPreFetchedQuestion] = useState<Question | null>(null);
   const [snapshots, setSnapshots] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
@@ -154,6 +152,11 @@ export default function InterviewRoom() {
   const isSubmittingRef = useRef(false);
   const evaluationRef = useRef<Evaluation | null>(null);
 
+  // Ref to always read the latest answer without stale-closure issues in timer effects
+  const answerRef = useRef('');
+  // Ref to hold the snapshot capture interval so it can be cleared on unmount
+  const captureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Accumulates finalized transcript text across recognition sessions
   const accumulatedTranscriptRef = useRef('');
 
@@ -172,10 +175,11 @@ export default function InterviewRoom() {
 
     // ─── Typewriter: animate question text character by character ───
     if (typewriterRef.current) clearInterval(typewriterRef.current);
-    setDisplayedText('');
+    const fullText = (currentQuestion?.questionText ?? '').trim();
+    // Show the first character immediately (no blank frame before the first tick)
+    setDisplayedText(fullText.slice(0, 1));
     setIsTyping(true);
-    const fullText = currentQuestion?.questionText ?? '';
-    let charIndex = 0;
+    let charIndex = 1;
     typewriterRef.current = setInterval(() => {
       charIndex++;
       setDisplayedText(fullText.slice(0, charIndex));
@@ -198,17 +202,23 @@ export default function InterviewRoom() {
     };
   }, [currentQuestion?.id]);
 
-  // Auto-submit when timer reaches 0
+  // Auto-submit when timer reaches 0 (answerRef avoids stale closure on answer state)
   useEffect(() => {
-    if (timeLeft === 0 && answer.trim() && !isSubmitting && !evaluation) {
+    if (timeLeft === 0 && answerRef.current.trim() && !isSubmitting && !evaluation) {
       void submitAnswer();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft]);
 
-  // Cancel speech on unmount
+  // Keep answerRef in sync so the timer effect always reads the latest value
+  useEffect(() => { answerRef.current = answer; }, [answer]);
+
+  // Cancel speech and clear snapshot interval on unmount
   useEffect(() => {
-    return () => { window.speechSynthesis.cancel(); };
+    return () => {
+      window.speechSynthesis.cancel();
+      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
+    };
   }, []);
 
   // ─── Microphone Permission Check on Mount ───
@@ -354,9 +364,13 @@ export default function InterviewRoom() {
         .filter(t => t.length > 0)
         .join(' ');
 
-      // Basic AI voice stripping: if it exactly matches the start of the question, ignore it
+      // TTS echo filter: reject the transcript if it is a contiguous substring of the question.
+      // This catches both clean prefix echoes ("introduce yourself and") and mid-word echoes
+      // ("uce yourself and") that occur when the mic starts while TTS audio is still fading.
       const qText = currentQuestion?.questionText || '';
-      if (fullText.toLowerCase() === qText.toLowerCase().substring(0, fullText.length)) {
+      const qNorm = qText.toLowerCase().replace(/\s+/g, ' ').trim();
+      const tNorm = fullText.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (tNorm.length > 0 && tNorm.length <= qNorm.length && qNorm.includes(tNorm)) {
         return;
       }
 
@@ -485,8 +499,8 @@ export default function InterviewRoom() {
       console.error('Failed to start recognition:', e);
     }
 
-    // Capture snapshots for behavioral analysis
-    const captureInterval = setInterval(() => {
+    // Capture snapshots for behavioral analysis (stored in ref so unmount effect can clear it)
+    captureIntervalRef.current = setInterval(() => {
       if (!videoRef.current || !canvasRef.current || !cameraOn) return;
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -503,7 +517,7 @@ export default function InterviewRoom() {
     return () => {
       recognition.onend = null;
       recognition.stop();
-      clearInterval(captureInterval);
+      if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
     };
   }, [currentQuestion, cameraOn]);
 
@@ -529,10 +543,6 @@ export default function InterviewRoom() {
       if (preferred) u.voice = preferred;
     };
 
-    const silentHandler = (e: SpeechSynthesisErrorEvent) => {
-      if (e.error !== 'interrupted') console.warn('SpeechSynthesis error:', e.error);
-    };
-
     // Question: custom rate/pitch from settings
     const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
     utteranceRef.current = questionU; // Keep reference to prevent GC bug
@@ -541,13 +551,13 @@ export default function InterviewRoom() {
     questionU.rate = voiceRate;
     questionU.pitch = voicePitch;
     questionU.volume = 1.0;
-    questionU.onerror = silentHandler;
 
-    // Start listening as soon as the question finishes speaking or if it fails
-    questionU.onend = () => { startContinuousListening(); };
-    questionU.onerror = () => { 
+    // Delay mic start slightly after TTS so the speaker audio has fully faded
+    // before recognition begins (prevents TTS echo from being transcribed as the answer)
+    questionU.onend = () => { setTimeout(() => startContinuousListening(), 400); };
+    questionU.onerror = () => {
       console.warn('SpeechSynthesis error, starting mic anyway');
-      startContinuousListening(); 
+      setTimeout(() => startContinuousListening(), 200);
     };
 
     const startSpeaking = () => {
@@ -648,10 +658,8 @@ export default function InterviewRoom() {
 
       if (data.nextQuestion) {
         // Auto-advance to next question immediately
-        setPreFetchedQuestion(data.nextQuestion);
         setCurrentQuestion(data.nextQuestion);
         setQuestionNumber((n) => n + 1);
-        setPreFetchedQuestion(null);
         setAnswer('');
         accumulatedTranscriptRef.current = '';
         setStartTime(Date.now());
@@ -673,34 +681,7 @@ export default function InterviewRoom() {
   submitAnswerRef.current = submitAnswer;
 
   // \u2500\u2500\u2500 Next Question (adaptive) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  const handleNextQuestion = async () => {
-    // Use pre-fetched question if available for instant transition
-    if (preFetchedQuestion) {
-      setCurrentQuestion(preFetchedQuestion);
-      setQuestionNumber((n) => n + 1);
-      setPreFetchedQuestion(null);
-      return;
-    }
 
-    setIsFetchingNext(true);
-    setErrorMsg('');
-    try {
-      const res = await apiFetch(`/api/interview/${interviewId}/next-question`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: answeredHistoryRef.current }),
-      });
-
-      if (!res.ok) throw new Error('Failed to fetch next question');
-      const data = await res.json() as { question: Question };
-      setCurrentQuestion(data.question);
-      setQuestionNumber((n) => n + 1);
-    } catch (err: unknown) {
-      setErrorMsg('Could not load next question. Please try again.');
-    } finally {
-      setIsFetchingNext(false);
-    }
-  };
 
   // ─── Pause / Resume ──────────────────────────────────────────────────────
   const handlePause = () => {
@@ -1092,8 +1073,18 @@ export default function InterviewRoom() {
                 )}
               </AnimatePresence>
 
-              {/* Countdown timer ring */}
+              {/* Countdown timer ring + Speaker + Pause — all in one row, no overlap */}
               <div className="ml-auto flex items-center gap-2">
+                {/* Speaker button */}
+                <button
+                  onClick={speakQuestion}
+                  className="w-9 h-9 flex items-center justify-center bg-gray-800/70 hover:bg-gray-700 text-gray-400 hover:text-purple-400 rounded-full transition-all"
+                  title="Read Question Aloud"
+                >
+                  <Volume2 size={16} />
+                </button>
+
+                {/* Timer ring */}
                 <div className="relative w-9 h-9">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                     <circle cx="18" cy="18" r="15" fill="none" stroke="#1f2937" strokeWidth="3"/>
@@ -1113,6 +1104,7 @@ export default function InterviewRoom() {
                     {timeLeft}
                   </span>
                 </div>
+
                 {/* Pause button */}
                 {!evaluation && (
                   <button
@@ -1125,14 +1117,7 @@ export default function InterviewRoom() {
                 )}
               </div>
             </div>
-            <button
-              onClick={speakQuestion}
-              className="absolute top-8 right-8 text-gray-500 hover:text-purple-400 transition-colors bg-gray-800/50 p-2 rounded-full"
-              title="Read Question Aloud"
-            >
-              <Volume2 size={20} />
-            </button>
-            <h2 className="text-2xl font-bold text-white leading-relaxed pr-12">
+            <h2 className="text-2xl font-bold text-white leading-relaxed mt-1">
               {displayedText}
               {isTyping && (
                 <span className="inline-block w-0.5 h-6 bg-purple-400 ml-0.5 align-middle animate-pulse" />
