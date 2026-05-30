@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { BrainCircuit, Loader2, Sparkles, ChevronRight, Calendar, Award, BarChart3, ArrowRight, FileText, UserCircle } from 'lucide-react';
+import { Loader2, ChevronRight, Calendar, Award, BarChart3, ArrowRight, FileText, UserCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../lib/api';
@@ -30,9 +30,8 @@ interface Interview {
 }
 
 function ScoreBadge({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-gray-500 font-bold text-xl">—</span>;
-  const color = score >= 8 ? 'text-green-400' : score >= 5 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`font-bold text-2xl ${color}`}>{score}<span className="text-sm text-gray-500">/10</span></span>;
+  if (score === null) return <span className="text-[#999999] font-semibold text-xl">—</span>;
+  return <span className="font-semibold text-2xl text-black">{score}<span className="text-sm text-[#999999]">/10</span></span>;
 }
 
 export default function Dashboard() {
@@ -118,53 +117,47 @@ export default function Dashboard() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') void handleStart();
-  };
+
 
   const displayName = (dbUser?.name || user?.displayName)?.split(' ')[0] ?? 'there';
 
   return (
-    <div className="min-h-screen p-6 md:p-10 relative overflow-hidden">
-      {/* Background blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="max-w-5xl mx-auto relative z-10">
+    <div className="min-h-screen p-6 md:p-10">
+      <div className="max-w-5xl mx-auto">
         {/* Greeting */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.4 }}
           className="mb-10"
         >
-          <h1 className="text-4xl font-bold text-white mb-1">
-            Hey, <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{displayName} 👋</span>
+          <h1 className="text-3xl font-bold text-black mb-1">
+            Hey, {displayName}
           </h1>
-          <p className="text-gray-500">Ready to practice? Start a new interview or review your progress below.</p>
+          <p className="text-[#666666]">Ready to practice? Start a new interview or review your progress below.</p>
         </motion.div>
 
         {/* Cards row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
           {/* ── Quick Start Card ── */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl"
+            transition={{ duration: 0.4, delay: 0.05 }}
+            className="border border-[#E5E5E5] p-8"
           >
             <div className="flex items-center gap-3 mb-6">
-              <div className="flex items-center justify-center w-12 h-12 bg-purple-500/10 rounded-2xl">
-                <BrainCircuit size={28} className="text-purple-400" />
+              <div className="flex items-center justify-center w-10 h-10 border border-[#E5E5E5]">
+                <BarChart3 size={20} className="text-black" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Quick Start</h2>
-                <p className="text-gray-500 text-sm">AI adapts 10–20 questions to your role</p>
+                <h2 className="text-lg font-semibold text-black">Quick Start</h2>
+                <p className="text-[#999999] text-sm">AI adapts 10–20 questions to your role</p>
               </div>
             </div>
 
             {errorMsg && (
-              <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-xl px-4 py-3">
+              <div className="mb-4 bg-[#FEF2F2] border border-[#FECACA] text-[#D00000] text-sm px-4 py-3">
                 {errorMsg}
               </div>
             )}
@@ -178,18 +171,18 @@ export default function Dashboard() {
                 onChange={(e) => setJobRole(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void handleStart(); }}
                 disabled={isLoading}
-                className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all disabled:opacity-50"
+                className="flex-1 bg-white border border-[#E5E5E5] px-4 py-3 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all disabled:opacity-50"
               />
               <button
                 id="start-interview-btn"
                 onClick={handleStart}
                 disabled={!jobRole.trim() || isLoading}
-                className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_28px_rgba(147,51,234,0.4)] whitespace-nowrap"
+                className="flex items-center justify-center gap-2 bg-black hover:bg-[#222222] disabled:bg-[#E5E5E5] disabled:text-[#999999] text-white font-medium px-6 py-3 transition-all whitespace-nowrap"
               >
                 {isLoading ? (
                   <><Loader2 className="animate-spin" size={18} />Generating…</>
                 ) : (
-                  <><Sparkles size={18} />Generate Questions</>
+                  <>Generate Questions</>
                 )}
               </button>
             </div>
@@ -197,30 +190,30 @@ export default function Dashboard() {
 
           {/* ── Start from Resume Card ── */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.15 }}
-            className="bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl"
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="border border-[#E5E5E5] p-8"
           >
             <div className="flex items-center gap-3 mb-6">
-              <div className="flex items-center justify-center w-12 h-12 bg-blue-500/10 rounded-2xl">
-                <FileText size={28} className="text-blue-400" />
+              <div className="flex items-center justify-center w-10 h-10 border border-[#E5E5E5]">
+                <FileText size={20} className="text-black" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white">Start from My Resume</h2>
-                <p className="text-gray-500 text-sm">AI tailors questions to your uploaded resume</p>
+                <h2 className="text-lg font-semibold text-black">Start from My Resume</h2>
+                <p className="text-[#999999] text-sm">AI tailors questions to your uploaded resume</p>
               </div>
             </div>
 
             {dbUser?.resumeText ? (
               <>
-                <div className="flex items-center gap-2 mb-4 bg-green-500/10 border border-green-500/30 rounded-xl px-3 py-2">
-                  <FileText size={14} className="text-green-400 flex-shrink-0" />
-                  <span className="text-green-400 text-xs font-medium">Resume on file · {Math.round(dbUser.resumeText.length / 100) / 10}k chars</span>
+                <div className="flex items-center gap-2 mb-4 bg-[#F5F5F5] border border-[#E5E5E5] px-3 py-2">
+                  <FileText size={14} className="text-[#666666] flex-shrink-0" />
+                  <span className="text-[#666666] text-xs font-medium">Resume on file · {Math.round(dbUser.resumeText.length / 100) / 10}k chars</span>
                 </div>
 
                 {resumeError && (
-                  <div className="mb-4 bg-red-500/10 border border-red-500/40 text-red-400 text-sm rounded-xl px-4 py-3">
+                  <div className="mb-4 bg-[#FEF2F2] border border-[#FECACA] text-[#D00000] text-sm px-4 py-3">
                     {resumeError}
                   </div>
                 )}
@@ -234,28 +227,28 @@ export default function Dashboard() {
                     onChange={(e) => setResumeJobRole(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') void handleStartFromResume(); }}
                     disabled={resumeLoading}
-                    className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50"
+                    className="flex-1 bg-white border border-[#E5E5E5] px-4 py-3 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all disabled:opacity-50"
                   />
                   <button
                     id="start-resume-interview-btn"
                     onClick={handleStartFromResume}
                     disabled={!resumeJobRole.trim() || resumeLoading}
-                    className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(59,130,246,0.25)] hover:shadow-[0_0_28px_rgba(59,130,246,0.4)] whitespace-nowrap"
+                    className="flex items-center justify-center gap-2 bg-black hover:bg-[#222222] disabled:bg-[#E5E5E5] disabled:text-[#999999] text-white font-medium px-6 py-3 transition-all whitespace-nowrap"
                   >
                     {resumeLoading ? (
                       <><Loader2 className="animate-spin" size={18} />Generating…</>
                     ) : (
-                      <><Sparkles size={18} />Start Interview</>
+                      <>Start Interview</>
                     )}
                   </button>
                 </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center text-center py-4 gap-3">
-                <p className="text-gray-500 text-sm">No resume uploaded yet.</p>
+                <p className="text-[#999999] text-sm">No resume uploaded yet.</p>
                 <Link
                   to="/profile"
-                  className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 hover:text-blue-300 font-medium px-5 py-2.5 rounded-xl transition-all text-sm"
+                  className="flex items-center gap-2 border border-[#E5E5E5] hover:border-black text-black font-medium px-5 py-2.5 transition-all text-sm"
                 >
                   <UserCircle size={16} /> Upload in Profile
                 </Link>
@@ -266,16 +259,15 @@ export default function Dashboard() {
 
         {/* Recent Sessions */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
+          transition={{ duration: 0.4, delay: 0.15 }}
         >
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <BarChart3 size={22} className="text-purple-400" />
+            <h2 className="text-lg font-semibold text-black">
               Recent Sessions
             </h2>
-            <Link to="/history" className="flex items-center gap-1 text-sm text-gray-500 hover:text-purple-400 transition-colors">
+            <Link to="/history" className="flex items-center gap-1 text-sm text-[#666666] hover:text-black transition-colors">
               View all <ArrowRight size={14} />
             </Link>
           </div>
@@ -283,37 +275,37 @@ export default function Dashboard() {
           {sessionsLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[...Array(2)].map((_, i) => (
-                <div key={i} className="bg-gray-900/40 border border-gray-800 rounded-2xl p-6 animate-pulse">
-                  <div className="h-4 bg-gray-800 rounded w-2/3 mb-3" />
-                  <div className="h-3 bg-gray-800 rounded w-1/3 mb-3" />
-                  <div className="h-3 bg-gray-800 rounded w-full" />
+                <div key={i} className="border border-[#E5E5E5] p-6 animate-pulse">
+                  <div className="h-4 bg-[#F5F5F5] rounded w-2/3 mb-3" />
+                  <div className="h-3 bg-[#F5F5F5] rounded w-1/3 mb-3" />
+                  <div className="h-3 bg-[#F5F5F5] rounded w-full" />
                 </div>
               ))}
             </div>
           ) : recentSessions.length === 0 ? (
-            <div className="text-center py-16 bg-gray-900/20 border border-dashed border-gray-800 rounded-3xl">
-              <Award size={40} className="mx-auto text-gray-700 mb-3" />
-              <p className="text-gray-500 mb-1">No completed interviews yet.</p>
-              <p className="text-gray-600 text-sm">Start your first session above to see your results here.</p>
+            <div className="text-center py-16 border border-dashed border-[#E5E5E5]">
+              <Award size={32} className="mx-auto text-[#CCCCCC] mb-3" />
+              <p className="text-[#666666] mb-1">No completed interviews yet.</p>
+              <p className="text-[#999999] text-sm">Start your first session above to see your results here.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {recentSessions.map((session, idx) => (
                 <motion.div
                   key={session.id}
-                  initial={{ opacity: 0, y: 16 }}
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * idx }}
+                  transition={{ delay: 0.05 * idx }}
                   onClick={() => navigate(`/results/${session.id}`)}
-                  className="group bg-gray-900/50 border border-gray-800 hover:border-purple-500/40 hover:bg-purple-500/5 rounded-2xl p-5 cursor-pointer transition-all"
+                  className="group border border-[#E5E5E5] hover:border-black p-5 cursor-pointer transition-all"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 pr-4">
-                      <h3 className="font-semibold text-white group-hover:text-purple-300 transition-colors line-clamp-1">{session.jobRole}</h3>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                      <h3 className="font-medium text-black line-clamp-1">{session.jobRole}</h3>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-[#999999]">
                         <Calendar size={11} />
                         {new Date(session.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        <span className="text-green-400 font-medium uppercase tracking-tighter border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 rounded-full text-[10px]">
+                        <span className="text-[#666666] font-medium uppercase tracking-tight border border-[#E5E5E5] px-1.5 py-0.5 text-[10px]">
                           {session.status}
                         </span>
                       </div>
@@ -321,9 +313,9 @@ export default function Dashboard() {
                     <ScoreBadge score={session.finalScore} />
                   </div>
                   {session.feedbackSummary && (
-                    <p className="text-gray-500 text-xs leading-relaxed line-clamp-2">{session.feedbackSummary}</p>
+                    <p className="text-[#999999] text-xs leading-relaxed line-clamp-2">{session.feedbackSummary}</p>
                   )}
-                  <div className="mt-3 flex items-center gap-1 text-xs text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                  <div className="mt-3 flex items-center gap-1 text-xs text-black opacity-0 group-hover:opacity-100 transition-opacity font-medium">
                     View full report <ChevronRight size={13} />
                   </div>
                 </motion.div>

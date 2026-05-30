@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { BrainCircuit, Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 function GoogleIcon() {
@@ -60,26 +60,20 @@ export default function SignUpPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-[#0a0a0f]">
-            <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-[-10%] left-[-10%] w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-
+        <div className="min-h-screen flex items-center justify-center p-6 bg-white">
             <motion.div
-                initial={{ opacity: 0, y: 24 }}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="w-full max-w-md bg-gray-900/80 backdrop-blur border border-gray-800 rounded-3xl p-8 shadow-2xl z-10"
+                transition={{ duration: 0.4 }}
+                className="w-full max-w-sm"
             >
-                <div className="flex flex-col items-center mb-8">
-                    <div className="flex items-center justify-center w-14 h-14 bg-purple-500/10 rounded-2xl mb-4">
-                        <BrainCircuit size={32} className="text-purple-400" />
-                    </div>
-                    <h1 className="text-2xl font-bold text-white">Create account</h1>
-                    <p className="text-gray-500 text-sm mt-1">Start your AI interview journey</p>
+                <div className="mb-8">
+                    <h1 className="text-2xl font-bold text-black">Create account</h1>
+                    <p className="text-[#666666] text-sm mt-1">Start your AI interview journey</p>
                 </div>
 
                 {error && (
-                    <div className="mb-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3">
+                    <div className="mb-4 bg-[#FEF2F2] border border-[#FECACA] text-[#D00000] text-sm px-4 py-3">
                         {error}
                     </div>
                 )}
@@ -89,7 +83,7 @@ export default function SignUpPage() {
                     <button
                         onClick={() => handleOAuth('google')}
                         disabled={loading}
-                        className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 text-gray-900 font-semibold py-3 rounded-xl transition-all disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-3 bg-white hover:bg-[#FAFAFA] border border-[#E5E5E5] text-black font-medium py-3 transition-all disabled:opacity-50"
                     >
                         <GoogleIcon />
                         Continue with Google
@@ -98,34 +92,34 @@ export default function SignUpPage() {
                 </div>
 
                 <div className="relative mb-6">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-800" /></div>
-                    <div className="relative flex justify-center text-xs text-gray-600 bg-gray-900/80 px-3 mx-auto w-fit">or with email</div>
+                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#E5E5E5]" /></div>
+                    <div className="relative flex justify-center text-xs text-[#999999] bg-white px-3 mx-auto w-fit">or with email</div>
                 </div>
 
                 <form onSubmit={handleEmailSignUp} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Full Name</label>
+                        <label className="block text-xs font-medium text-[#666666] mb-1.5">Full Name</label>
                         <div className="relative">
-                            <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#CCCCCC]" />
                             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="John Doe" required
-                                className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm" />
+                                className="w-full bg-white border border-[#E5E5E5] pl-10 pr-4 py-3 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all text-sm" />
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Email</label>
+                        <label className="block text-xs font-medium text-[#666666] mb-1.5">Email</label>
                         <div className="relative">
-                            <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#CCCCCC]" />
                             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required
-                                className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm" />
+                                className="w-full bg-white border border-[#E5E5E5] pl-10 pr-4 py-3 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all text-sm" />
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                        <label className="block text-xs font-medium text-[#666666] mb-1.5">Password</label>
                         <div className="relative">
-                            <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                            <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#CCCCCC]" />
                             <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 characters" required
-                                className="w-full bg-gray-950 border border-gray-800 rounded-xl pl-10 pr-10 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-sm" />
-                            <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                                className="w-full bg-white border border-[#E5E5E5] pl-10 pr-10 py-3 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all text-sm" />
+                            <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#CCCCCC] hover:text-[#666666]">
                                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
                         </div>
@@ -133,16 +127,16 @@ export default function SignUpPage() {
                     <button
                         type="submit"
                         disabled={loading || !email || !password || !name}
-                        className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(147,51,234,0.25)]"
+                        className="w-full bg-black hover:bg-[#222222] disabled:bg-[#E5E5E5] disabled:text-[#999999] text-white font-medium py-3 transition-all flex items-center justify-center gap-2"
                     >
                         {loading ? <Loader2 size={18} className="animate-spin" /> : null}
                         Create Account
                     </button>
                 </form>
 
-                <p className="text-center text-sm text-gray-500 mt-6">
+                <p className="text-center text-sm text-[#666666] mt-8">
                     Already have an account?{' '}
-                    <Link to="/sign-in" className="text-purple-400 hover:text-purple-300 font-medium">Sign in</Link>
+                    <Link to="/sign-in" className="text-black font-medium underline underline-offset-2 hover:opacity-70">Sign in</Link>
                 </p>
             </motion.div>
         </div>

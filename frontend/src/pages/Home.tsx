@@ -1,30 +1,21 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BrainCircuit, ArrowRight, BarChart3, Zap, FileText } from 'lucide-react';
+import { ArrowRight, BarChart3, Zap, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const features = [
   {
     icon: Zap,
-    color: 'text-purple-400',
-    bg: 'bg-purple-500/10',
-    border: 'border-purple-500/20',
     title: 'AI-Powered Questions',
     desc: 'Dynamic, role-specific questions that adapt to your skill level in real time.',
   },
   {
     icon: BarChart3,
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/20',
     title: 'Real-Time Evaluation',
     desc: 'Instant scoring and detailed feedback on every answer, powered by Gemini AI.',
   },
   {
     icon: FileText,
-    color: 'text-green-400',
-    bg: 'bg-green-500/10',
-    border: 'border-green-500/20',
     title: 'Detailed Reports',
     desc: 'Comprehensive session reports with missing concepts, behavioral analysis, and growth tips.',
   },
@@ -35,30 +26,27 @@ export default function Home() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="z-10 w-full max-w-4xl"
+        transition={{ duration: 0.6 }}
+        className="w-full max-w-3xl"
       >
-        <div className="flex items-center justify-center mb-6 text-purple-400">
-          <BrainCircuit size={64} />
-        </div>
-        <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent font-heading">
-          AI Interviewer Pro
+        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#999999] mb-6">
+          AI Mock Interview Platform
+        </p>
+        <h1 className="text-5xl md:text-6xl font-bold text-black mb-6 leading-[1.1] tracking-tight">
+          Practice interviews.<br />Get better. Land the job.
         </h1>
-        <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed">
-          Experience an intelligent mock interview that adapts to your skills, evaluates your answers, and helps you land your dream job.
+        <p className="text-lg text-[#666666] mb-12 max-w-xl mx-auto leading-relaxed">
+          An intelligent mock interview that adapts to your skills, evaluates your answers, and helps you prepare with confidence.
         </p>
 
-        <div className="flex justify-center mb-16">
+        <div className="flex justify-center mb-20">
           <motion.button
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => {
               if (!user) {
                 navigate('/sign-in', { state: { returnTo: '/dashboard' } });
@@ -66,27 +54,27 @@ export default function Home() {
               }
               navigate('/dashboard');
             }}
-            className="flex items-center gap-3 bg-purple-600 hover:bg-purple-500 text-white font-bold px-10 py-5 rounded-2xl transition-all shadow-[0_0_40px_rgba(147,51,234,0.35)] text-lg"
+            className="flex items-center gap-3 bg-black hover:bg-[#222222] text-white font-semibold px-8 py-4 transition-colors text-base"
           >
-            Go to Dashboard <ArrowRight size={22} />
+            Go to Dashboard <ArrowRight size={18} />
           </motion.button>
         </div>
 
         {/* Feature Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[#E5E5E5] border border-[#E5E5E5]">
           {features.map((f, i) => (
             <motion.div
               key={f.title}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + i * 0.1, duration: 0.5 }}
-              className={`bg-gray-900/50 backdrop-blur border ${f.border} rounded-2xl p-6 hover:scale-[1.02] transition-transform`}
+              transition={{ delay: 0.2 + i * 0.08, duration: 0.4 }}
+              className="bg-white p-8 text-left hover:bg-[#FAFAFA] transition-colors"
             >
-              <div className={`w-12 h-12 ${f.bg} border ${f.border} rounded-xl flex items-center justify-center mb-4`}>
-                <f.icon size={24} className={f.color} />
+              <div className="w-10 h-10 border border-[#E5E5E5] flex items-center justify-center mb-5">
+                <f.icon size={20} className="text-black" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">{f.title}</h3>
-              <p className="text-gray-500 text-sm leading-relaxed">{f.desc}</p>
+              <h3 className="text-base font-semibold text-black mb-2">{f.title}</h3>
+              <p className="text-[#666666] text-sm leading-relaxed">{f.desc}</p>
             </motion.div>
           ))}
         </div>

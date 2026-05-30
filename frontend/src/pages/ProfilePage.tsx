@@ -282,7 +282,6 @@ export default function ProfilePage() {
                 <div className="avatar-initials">{initials}</div>
               )}
             </div>
-            <div className="avatar-glow" />
           </div>
 
           <h2 className="sidebar-name">{dbUser?.name || user?.displayName || 'Your Name'}</h2>
@@ -548,30 +547,30 @@ export default function ProfilePage() {
               >
                 <div className="resume-section-header" style={{ marginBottom: '1rem' }}>
                   <div className="resume-section-title">
-                    <Star size={16} className="resume-icon" style={{ color: '#f59e0b' }} />
-                    <span style={{ color: '#f59e0b' }}>AI Resume Insights</span>
+                    <Star size={16} className="resume-icon" style={{ color: '#000000' }} />
+                    <span style={{ color: '#000000', fontWeight: 600 }}>AI Resume Insights</span>
                   </div>
                 </div>
 
                 {summary.summary && (
-                  <p style={{ fontSize: '.83rem', color: '#94a3b8', lineHeight: 1.6, marginBottom: '1rem' }}>
+                  <p style={{ fontSize: '.83rem', color: '#666666', lineHeight: 1.6, marginBottom: '1rem' }}>
                     {summary.summary}
                   </p>
                 )}
 
                 {summary.experience && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', marginBottom: '1rem' }}>
-                    <Calendar size={13} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-                    <span style={{ fontSize: '.78rem', color: '#a78bfa', fontWeight: 600 }}>{summary.experience}</span>
+                    <Calendar size={13} style={{ color: '#000000', flexShrink: 0 }} />
+                    <span style={{ fontSize: '.78rem', color: '#000000', fontWeight: 600 }}>{summary.experience}</span>
                   </div>
                 )}
 
                 {summary.topSkills && summary.topSkills.length > 0 && (
                   <div style={{ marginBottom: '1rem' }}>
-                    <p style={{ fontSize: '.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Top Skills</p>
+                    <p style={{ fontSize: '.7rem', fontWeight: 700, color: '#999999', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Top Skills</p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.4rem' }}>
                       {summary.topSkills.map((s: string) => (
-                        <span key={s} style={{ fontSize: '.72rem', fontWeight: 600, padding: '.2rem .6rem', borderRadius: 8, background: 'rgba(139,92,246,.1)', border: '1px solid rgba(139,92,246,.2)', color: '#a78bfa' }}>{s}</span>
+                        <span key={s} style={{ fontSize: '.72rem', fontWeight: 600, padding: '.2rem .6rem', background: '#F5F5F5', border: '1px solid #E5E5E5', color: '#000000' }}>{s}</span>
                       ))}
                     </div>
                   </div>
@@ -579,11 +578,11 @@ export default function ProfilePage() {
 
                 {summary.highlights && summary.highlights.length > 0 && (
                   <div>
-                    <p style={{ fontSize: '.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Key Highlights</p>
+                    <p style={{ fontSize: '.7rem', fontWeight: 700, color: '#999999', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: '.5rem' }}>Key Highlights</p>
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '.4rem' }}>
                       {summary.highlights.map((h: string) => (
-                        <li key={h} style={{ fontSize: '.78rem', color: '#94a3b8', display: 'flex', alignItems: 'flex-start', gap: '.5rem' }}>
-                          <span style={{ color: '#34d399', marginTop: '.15rem', flexShrink: 0 }}>✓</span>
+                        <li key={h} style={{ fontSize: '.78rem', color: '#666666', display: 'flex', alignItems: 'flex-start', gap: '.5rem' }}>
+                          <span style={{ color: '#000000', marginTop: '.15rem', flexShrink: 0 }}>✓</span>
                           {h}
                         </li>
                       ))}
@@ -599,22 +598,10 @@ export default function ProfilePage() {
       <style>{`
         .profile-page {
           min-height: 100vh;
-          background: #09090f;
+          background: #ffffff;
           padding: 2.5rem 1.5rem;
           font-family: 'Inter', sans-serif;
           position: relative;
-        }
-
-        /* Ambient glow */
-        .profile-page::before {
-          content: '';
-          position: fixed;
-          top: -200px; left: 50%;
-          transform: translateX(-50%);
-          width: 700px; height: 500px;
-          background: radial-gradient(ellipse, rgba(139,92,246,.12) 0%, transparent 70%);
-          pointer-events: none;
-          z-index: 0;
         }
 
         .profile-container {
@@ -634,33 +621,28 @@ export default function ProfilePage() {
           z-index: 9999;
           display: flex; align-items: center; gap: .5rem;
           padding: .75rem 1.25rem;
-          border-radius: 14px;
           font-size: .85rem; font-weight: 500;
-          backdrop-filter: blur(12px);
-          box-shadow: 0 8px 32px rgba(0,0,0,.4);
         }
         .profile-toast.success {
-          background: rgba(34,197,94,.15);
-          border: 1px solid rgba(34,197,94,.3);
-          color: #86efac;
+          background: #F0FDF4;
+          border: 1px solid #BBF7D0;
+          color: #1A7F37;
         }
         .profile-toast.error {
-          background: rgba(239,68,68,.15);
-          border: 1px solid rgba(239,68,68,.3);
-          color: #fca5a5;
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+          color: #D00000;
         }
 
         /* ── Sidebar ── */
         .profile-sidebar {
-          background: rgba(255,255,255,.03);
-          border: 1px solid rgba(255,255,255,.08);
-          border-radius: 24px;
+          background: #FAFAFA;
+          border: 1px solid #E5E5E5;
           padding: 2rem 1.5rem;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 1rem;
-          backdrop-filter: blur(12px);
           position: sticky;
           top: 80px;
           height: fit-content;
@@ -671,74 +653,63 @@ export default function ProfilePage() {
         .avatar-ring {
           width: 100px; height: 100px;
           border-radius: 50%;
-          border: 3px solid rgba(139,92,246,.5);
+          border: 2px solid #E5E5E5;
           padding: 3px;
-          background: linear-gradient(135deg, rgba(139,92,246,.2), rgba(59,130,246,.1));
-          box-shadow: 0 0 0 1px rgba(139,92,246,.2);
+          background: #FFFFFF;
         }
         .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
         .avatar-initials {
           width: 100%; height: 100%;
           border-radius: 50%;
-          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          background: #000000;
           display: flex; align-items: center; justify-content: center;
           font-size: 1.8rem; font-weight: 700; color: white;
         }
-        .avatar-glow {
-          position: absolute;
-          bottom: -8px; left: 50%;
-          transform: translateX(-50%);
-          width: 70px; height: 20px;
-          background: radial-gradient(ellipse, rgba(139,92,246,.5), transparent 70%);
-          filter: blur(8px);
-        }
 
         .sidebar-name {
-          font-size: 1.1rem; font-weight: 700; color: #f1f5f9;
+          font-size: 1.1rem; font-weight: 700; color: #000000;
           text-align: center; margin: 0;
         }
         .sidebar-role {
-          font-size: .8rem; color: #a78bfa;
+          font-size: .8rem; color: #666666;
           text-align: center; margin: 0;
         }
 
         .sidebar-meta {
           width: 100%;
           display: flex; flex-direction: column; gap: .5rem;
-          border-top: 1px solid rgba(255,255,255,.07);
+          border-top: 1px solid #E5E5E5;
           padding-top: 1rem;
         }
         .meta-row {
           display: flex; align-items: center; gap: .5rem;
-          font-size: .75rem; color: #94a3b8;
+          font-size: .75rem; color: #666666;
           word-break: break-all;
         }
-        .meta-row svg { flex-shrink: 0; color: #64748b; }
-        .meta-row.verified { color: #86efac; }
-        .meta-row.verified svg { color: #4ade80; }
+        .meta-row svg { flex-shrink: 0; color: #999999; }
+        .meta-row.verified { color: #1A7F37; }
+        .meta-row.verified svg { color: #1A7F37; }
 
         .sidebar-skills { width: 100%; }
         .skills-heading {
-          font-size: .7rem; font-weight: 600; color: #64748b;
+          font-size: .7rem; font-weight: 600; color: #999999;
           text-transform: uppercase; letter-spacing: .05em;
           margin-bottom: .5rem;
         }
 
         /* ── Main card ── */
         .profile-main {
-          background: rgba(255,255,255,.03);
-          border: 1px solid rgba(255,255,255,.08);
-          border-radius: 24px;
+          background: #FFFFFF;
+          border: 1px solid #E5E5E5;
           padding: 2rem;
-          backdrop-filter: blur(12px);
         }
 
         .main-header {
           display: flex; align-items: flex-start; justify-content: space-between;
           margin-bottom: 2rem; gap: 1rem; flex-wrap: wrap;
         }
-        .main-title { font-size: 1.5rem; font-weight: 700; color: #f1f5f9; margin: 0; }
-        .main-sub { font-size: .82rem; color: #64748b; margin: .25rem 0 0; }
+        .main-title { font-size: 1.5rem; font-weight: 700; color: #000000; margin: 0; }
+        .main-sub { font-size: .82rem; color: #999999; margin: .25rem 0 0; }
 
         .header-actions { display: flex; gap: .75rem; flex-shrink: 0; }
 
@@ -746,43 +717,41 @@ export default function ProfilePage() {
         .btn-edit, .btn-save, .btn-cancel {
           display: flex; align-items: center; gap: .4rem;
           padding: .55rem 1.1rem;
-          border-radius: 12px;
           font-size: .83rem; font-weight: 600;
           cursor: pointer;
           transition: all .2s;
           border: none;
         }
         .btn-edit {
-          background: rgba(139,92,246,.15);
-          color: #a78bfa;
-          border: 1px solid rgba(139,92,246,.3);
+          background: #FFFFFF;
+          color: #000000;
+          border: 1px solid #E5E5E5;
         }
-        .btn-edit:hover { background: rgba(139,92,246,.25); color: #c4b5fd; }
+        .btn-edit:hover { border-color: #000000; }
         .btn-save {
-          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          background: #000000;
           color: white;
-          box-shadow: 0 4px 14px rgba(124,58,237,.35);
         }
-        .btn-save:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(124,58,237,.5); transform: translateY(-1px); }
+        .btn-save:hover:not(:disabled) { background: #222222; }
         .btn-save:disabled { opacity: .6; cursor: not-allowed; }
         .btn-cancel {
-          background: rgba(255,255,255,.05);
-          color: #94a3b8;
-          border: 1px solid rgba(255,255,255,.1);
+          background: #FFFFFF;
+          color: #666666;
+          border: 1px solid #E5E5E5;
         }
-        .btn-cancel:hover { background: rgba(255,255,255,.09); }
+        .btn-cancel:hover { border-color: #000000; color: #000000; }
 
         /* Sections */
         .profile-section { margin-bottom: 1.75rem; }
         .section-title {
           display: flex; align-items: center; gap: .5rem;
           font-size: .82rem; font-weight: 600;
-          color: #7c3aed; text-transform: uppercase; letter-spacing: .06em;
+          color: #000000; text-transform: uppercase; letter-spacing: .06em;
           margin: 0 0 1.25rem;
         }
         .section-divider {
           height: 1px;
-          background: rgba(255,255,255,.06);
+          background: #E5E5E5;
           margin: 1.75rem 0;
         }
 
@@ -796,30 +765,28 @@ export default function ProfilePage() {
         .profile-field-label {
           display: flex; align-items: center; gap: .35rem;
           font-size: .72rem; font-weight: 600;
-          color: #64748b; text-transform: uppercase; letter-spacing: .05em;
+          color: #999999; text-transform: uppercase; letter-spacing: .05em;
         }
-        .field-icon { color: #7c3aed; }
+        .field-icon { color: #000000; }
         .profile-value {
-          font-size: .9rem; color: #cbd5e1; line-height: 1.5;
+          font-size: .9rem; color: #000000; line-height: 1.5;
           padding: .5rem 0;
-          border-bottom: 1px solid rgba(255,255,255,.05);
+          border-bottom: 1px solid #E5E5E5;
         }
-        .profile-value.empty { color: #475569; font-style: italic; }
+        .profile-value.empty { color: #CCCCCC; font-style: italic; }
         .profile-input {
-          background: rgba(255,255,255,.06);
-          border: 1px solid rgba(139,92,246,.25);
-          border-radius: 10px;
+          background: #FFFFFF;
+          border: 1px solid #E5E5E5;
           padding: .55rem .85rem;
-          font-size: .88rem; color: #e2e8f0;
+          font-size: .88rem; color: #000000;
           outline: none;
-          transition: border-color .2s, box-shadow .2s;
+          transition: border-color .2s;
           width: 100%;
           box-sizing: border-box;
         }
-        .profile-input::placeholder { color: #475569; }
+        .profile-input::placeholder { color: #CCCCCC; }
         .profile-input:focus {
-          border-color: rgba(139,92,246,.6);
-          box-shadow: 0 0 0 3px rgba(139,92,246,.1);
+          border-color: #000000;
         }
 
         /* Skills */
@@ -830,31 +797,29 @@ export default function ProfilePage() {
         .skill-chip {
           display: flex; align-items: center; gap: .3rem;
           padding: .3rem .75rem;
-          border-radius: 20px;
-          background: rgba(139,92,246,.12);
-          border: 1px solid rgba(139,92,246,.25);
-          color: #a78bfa;
+          background: #F5F5F5;
+          border: 1px solid #E5E5E5;
+          color: #000000;
           font-size: .78rem; font-weight: 500;
           transition: all .2s;
         }
-        .skill-chip.editable:hover { background: rgba(139,92,246,.22); }
+        .skill-chip.editable:hover { border-color: #000000; }
         .skill-chip-sm {
           padding: .2rem .55rem;
-          border-radius: 12px;
-          background: rgba(139,92,246,.1);
-          border: 1px solid rgba(139,92,246,.2);
-          color: #a78bfa;
+          background: #F5F5F5;
+          border: 1px solid #E5E5E5;
+          color: #000000;
           font-size: .7rem;
         }
-        .skill-chip-sm.more { color: #64748b; background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); }
+        .skill-chip-sm.more { color: #999999; background: #FAFAFA; }
         .skill-remove {
           background: none; border: none; cursor: pointer;
-          color: #7c3aed; padding: 0; line-height: 1;
+          color: #999999; padding: 0; line-height: 1;
           opacity: .7; transition: opacity .15s;
           display: flex; align-items: center;
         }
-        .skill-remove:hover { opacity: 1; color: #ef4444; }
-        .empty-skills { font-size: .83rem; color: #475569; font-style: italic; }
+        .skill-remove:hover { opacity: 1; color: #D00000; }
+        .empty-skills { font-size: .83rem; color: #CCCCCC; font-style: italic; }
 
         .skill-add-row {
           display: flex; gap: .5rem; align-items: center;
@@ -864,14 +829,13 @@ export default function ProfilePage() {
         .btn-add-skill {
           flex-shrink: 0;
           width: 38px; height: 38px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #7c3aed, #4f46e5);
+          background: #000000;
           border: none; color: white;
           display: flex; align-items: center; justify-content: center;
           cursor: pointer;
-          transition: transform .15s, box-shadow .15s;
+          transition: background .15s;
         }
-        .btn-add-skill:hover { transform: scale(1.08); box-shadow: 0 4px 14px rgba(124,58,237,.4); }
+        .btn-add-skill:hover { background: #222222; }
 
         /* Spin animation */
         .spin { animation: spin 1s linear infinite; }
@@ -881,89 +845,84 @@ export default function ProfilePage() {
         .resume-status-bar {
           display: flex; align-items: center; justify-content: space-between;
           gap: 1rem;
-          background: rgba(34,197,94,.08);
-          border: 1px solid rgba(34,197,94,.2);
-          border-radius: 14px;
+          background: #F0FDF4;
+          border: 1px solid #BBF7D0;
           padding: .85rem 1rem;
           margin-bottom: 1rem;
         }
         .resume-status-info { display: flex; align-items: center; gap: .65rem; }
-        .resume-status-icon { color: #4ade80; flex-shrink: 0; }
-        .resume-status-title { font-size: .85rem; font-weight: 600; color: #86efac; margin: 0; }
-        .resume-status-meta { font-size: .72rem; color: #4ade80; opacity: .7; margin: .1rem 0 0; }
+        .resume-status-icon { color: #1A7F37; flex-shrink: 0; }
+        .resume-status-title { font-size: .85rem; font-weight: 600; color: #1A7F37; margin: 0; }
+        .resume-status-meta { font-size: .72rem; color: #1A7F37; opacity: .7; margin: .1rem 0 0; }
 
         .btn-resume-remove {
           display: flex; align-items: center; gap: .35rem;
           padding: .35rem .75rem;
-          border-radius: 10px;
           font-size: .75rem; font-weight: 600;
-          background: rgba(239,68,68,.1);
-          border: 1px solid rgba(239,68,68,.25);
-          color: #f87171;
+          background: #FEF2F2;
+          border: 1px solid #FECACA;
+          color: #D00000;
           cursor: pointer;
           transition: all .2s;
           flex-shrink: 0;
         }
-        .btn-resume-remove:hover:not(:disabled) { background: rgba(239,68,68,.2); }
+        .btn-resume-remove:hover:not(:disabled) { background: #FEE2E2; }
         .btn-resume-remove:disabled { opacity: .5; cursor: not-allowed; }
 
         .resume-dropzone {
-          border: 2px dashed rgba(255,255,255,.1);
-          border-radius: 16px;
+          border: 2px dashed #E5E5E5;
           padding: 2rem 1rem;
           cursor: pointer;
           transition: all .2s;
-          background: rgba(255,255,255,.02);
+          background: #FAFAFA;
           min-height: 120px;
           display: flex; align-items: center; justify-content: center;
         }
-        .resume-dropzone:hover { border-color: rgba(139,92,246,.4); background: rgba(139,92,246,.04); }
-        .resume-dropzone.dragging { border-color: #a78bfa; background: rgba(139,92,246,.1); transform: scale(1.01); }
-        .resume-dropzone.has-file { border-color: rgba(59,130,246,.4); background: rgba(59,130,246,.04); }
+        .resume-dropzone:hover { border-color: #000000; }
+        .resume-dropzone.dragging { border-color: #000000; background: #F5F5F5; }
+        .resume-dropzone.has-file { border-color: #E5E5E5; background: #FAFAFA; }
 
         .resume-file-preview {
           display: flex; align-items: center; gap: 1rem;
           width: 100%;
         }
-        .resume-file-icon { color: #60a5fa; flex-shrink: 0; }
+        .resume-file-icon { color: #000000; flex-shrink: 0; }
         .resume-file-info { flex: 1; min-width: 0; }
-        .resume-file-name { font-size: .88rem; font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
-        .resume-file-size { font-size: .72rem; color: #60a5fa; margin: .15rem 0 0; }
+        .resume-file-name { font-size: .88rem; font-weight: 600; color: #000000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+        .resume-file-size { font-size: .72rem; color: #666666; margin: .15rem 0 0; }
         .resume-file-clear {
           flex-shrink: 0; background: none; border: none;
-          color: #64748b; cursor: pointer; padding: .25rem;
-          border-radius: 6px; transition: color .15s;
+          color: #999999; cursor: pointer; padding: .25rem;
+          transition: color .15s;
         }
-        .resume-file-clear:hover { color: #ef4444; }
+        .resume-file-clear:hover { color: #D00000; }
 
         .resume-drop-prompt {
           display: flex; flex-direction: column; align-items: center; gap: .5rem;
           text-align: center;
         }
-        .prompt-icon { color: #475569; }
-        .dragging-icon { color: #a78bfa; }
-        .drop-primary { font-size: .88rem; font-weight: 500; color: #94a3b8; margin: 0; }
-        .drop-secondary { font-size: .72rem; color: #475569; margin: 0; }
+        .prompt-icon { color: #CCCCCC; }
+        .dragging-icon { color: #000000; }
+        .drop-primary { font-size: .88rem; font-weight: 500; color: #666666; margin: 0; }
+        .drop-secondary { font-size: .72rem; color: #999999; margin: 0; }
 
         .resume-error {
           display: flex; align-items: center; gap: .4rem;
           margin-top: .65rem;
-          font-size: .78rem; color: #f87171;
+          font-size: .78rem; color: #D00000;
         }
 
         .btn-resume-upload {
           display: flex; align-items: center; justify-content: center; gap: .45rem;
           width: 100%; margin-top: .85rem;
           padding: .7rem 1.25rem;
-          border-radius: 12px;
           font-size: .88rem; font-weight: 600;
-          background: linear-gradient(135deg, #2563eb, #4f46e5);
+          background: #000000;
           color: white; border: none; cursor: pointer;
-          box-shadow: 0 4px 14px rgba(37,99,235,.3);
           transition: all .2s;
         }
-        .btn-resume-upload:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(37,99,235,.5); transform: translateY(-1px); }
-        .btn-resume-upload:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+        .btn-resume-upload:hover:not(:disabled) { background: #222222; }
+        .btn-resume-upload:disabled { opacity: .6; cursor: not-allowed; }
 
         /* Responsive */
         @media (max-width: 768px) {

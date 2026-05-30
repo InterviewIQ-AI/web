@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { BrainCircuit, LayoutDashboard, Clock, LogOut, ChevronDown, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Clock, LogOut, ChevronDown, UserCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -46,17 +46,16 @@ export default function Navbar() {
     <motion.nav
       initial={{ y: -60, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.4, ease: 'easeOut' }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
       className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4
-                 bg-gray-950/80 backdrop-blur-md border-b border-gray-800/60"
+                 bg-white border-b border-[#E5E5E5]"
     >
       {/* Logo */}
       <NavLink
         to="/"
-        className="flex items-center gap-2 text-white font-bold text-lg tracking-tight
-                   hover:text-purple-400 transition-colors"
+        className="text-black font-semibold text-lg tracking-tight
+                   hover:opacity-70 transition-opacity"
       >
-        <BrainCircuit size={24} className="text-purple-400" />
         InterviewIQ
       </NavLink>
 
@@ -67,9 +66,9 @@ export default function Navbar() {
             <NavLink
               to={to}
               className={({ isActive }) =>
-                `flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${isActive
-                  ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
+                `flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 border-b-2 ${isActive
+                  ? 'border-black text-black'
+                  : 'border-transparent text-[#666666] hover:text-black'
                 }`
               }
             >
@@ -85,45 +84,45 @@ export default function Navbar() {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="flex items-center gap-2 bg-gray-800/60 hover:bg-gray-700/60 border border-gray-700/50 rounded-xl px-3 py-2 transition-all"
+            className="flex items-center gap-2 border border-[#E5E5E5] hover:border-[#CCCCCC] px-3 py-2 transition-all"
           >
             {user.photoURL ? (
               <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full object-cover" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold">
+              <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-white text-xs font-semibold">
                 {initials}
               </div>
             )}
-            <span className="text-sm text-gray-300 max-w-[120px] truncate hidden sm:block">
+            <span className="text-sm text-black max-w-[120px] truncate hidden sm:block">
               {displayName}
             </span>
-            <ChevronDown size={14} className={`text-gray-500 transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown size={14} className={`text-[#999999] transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
           </button>
 
           <AnimatePresence>
             {menuOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2 w-52 bg-gray-900 border border-gray-800 rounded-2xl shadow-xl overflow-hidden"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                transition={{ duration: 0.12 }}
+                className="absolute right-0 mt-2 w-52 bg-white border border-[#E5E5E5] shadow-sm overflow-hidden"
               >
-                <div className="px-4 py-3 border-b border-gray-800">
-                  <p className="text-xs text-gray-500">Signed in as</p>
-                  <p className="text-sm font-medium text-white truncate">{user.email}</p>
+                <div className="px-4 py-3 border-b border-[#E5E5E5]">
+                  <p className="text-xs text-[#999999]">Signed in as</p>
+                  <p className="text-sm font-medium text-black truncate">{user.email}</p>
                 </div>
                 <NavLink
                   to="/profile"
                   onClick={() => setMenuOpen(false)}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-gray-300 hover:bg-purple-500/10 hover:text-purple-300 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-[#666666] hover:bg-[#F5F5F5] hover:text-black transition-colors"
                 >
                   <UserCircle size={15} />
                   View Profile
                 </NavLink>
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm text-[#666666] hover:bg-[#F5F5F5] hover:text-black transition-colors"
                 >
                   <LogOut size={15} />
                   Sign out
@@ -133,16 +132,16 @@ export default function Navbar() {
           </AnimatePresence>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <NavLink
             to="/sign-in"
-            className="text-sm text-gray-400 hover:text-white px-4 py-2 rounded-xl transition-all hover:bg-gray-800/60"
+            className="text-sm text-[#666666] hover:text-black px-4 py-2 transition-all"
           >
             Sign in
           </NavLink>
           <NavLink
             to="/sign-up"
-            className="text-sm bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl transition-all font-medium"
+            className="text-sm bg-black hover:bg-[#333333] text-white px-5 py-2 transition-all font-medium"
           >
             Get Started
           </NavLink>

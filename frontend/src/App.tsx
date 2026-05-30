@@ -14,8 +14,8 @@ import { Loader2 } from 'lucide-react';
 
 function FullPageSpinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f]">
-      <Loader2 className="animate-spin text-purple-400" size={40} />
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <Loader2 className="animate-spin text-black" size={32} />
     </div>
   );
 }
@@ -53,7 +53,7 @@ function ProtectedRoute({
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
+      <div className="min-h-screen bg-white text-black" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
         <Navbar />
         <div className="pt-16">
           <Routes>

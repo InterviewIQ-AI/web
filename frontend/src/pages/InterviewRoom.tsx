@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Mic, MicOff, Send, Camera, CameraOff,
-  Volume2, AlertCircle, Loader2, CheckCircle, LogOut, ArrowRight,
-  Code, User, Briefcase, X, Lightbulb, RefreshCw, Pause, Play,
+  Volume2, AlertCircle, Loader2, LogOut,
+  Code, User, X, Lightbulb, Pause, Play,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../lib/api';
@@ -59,7 +59,7 @@ export default function InterviewRoom() {
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [snapshots, setSnapshots] = useState<string[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
+  const [_, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'checking'>('checking');
   const [showMicModal, setShowMicModal] = useState(false);
 
   // ─── Timer state ───
@@ -80,7 +80,6 @@ export default function InterviewRoom() {
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Auto-submit trigger phrases ───
-  // Spoken at end of answer to trigger auto-submit without clicking
   const TRIGGER_PHRASES = [
     "that's all", "thats all", "that is all",
     "i'm done", "im done", "i am done",
@@ -92,7 +91,6 @@ export default function InterviewRoom() {
     "end answer", "done",
   ];
 
-  // Ref so recognition onresult can call the latest submitAnswer without stale closure
   const submitAnswerRef = useRef<(override?: string) => Promise<void>>(() => Promise.resolve());
   const [autoSubmitTriggered, setAutoSubmitTriggered] = useState(false);
 
@@ -120,7 +118,6 @@ export default function InterviewRoom() {
     saveState();
   }, [interviewId, currentQuestion, questionNumber, voiceRate, voicePitch, autoRead, totalQuestions]);
 
-  // Load state on mount if not provided by location
   useEffect(() => {
     if (!state) {
       const activeId = localStorage.getItem('active_interview_id');
@@ -146,21 +143,16 @@ export default function InterviewRoom() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const isVoiceAnswerRef = useRef(false);
-  // Stores all answered Q&As for adaptive follow-up generation
   const answeredHistoryRef = useRef<Array<{ question: string; answer: string }>>([]);
 
   const isSubmittingRef = useRef(false);
   const evaluationRef = useRef<Evaluation | null>(null);
 
-  // Ref to always read the latest answer without stale-closure issues in timer effects
   const answerRef = useRef('');
-  // Ref to hold the snapshot capture interval so it can be cleared on unmount
   const captureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Accumulates finalized transcript text across recognition sessions
   const accumulatedTranscriptRef = useRef('');
 
-  // Reset answer/evaluation and restart timer when moving to a new question
   useEffect(() => {
     setAnswer('');
     setEvaluation(null);
@@ -173,10 +165,8 @@ export default function InterviewRoom() {
     isPausedRef.current = false;
     window.speechSynthesis.cancel();
 
-    // ─── Typewriter: animate question text character by character ───
     if (typewriterRef.current) clearInterval(typewriterRef.current);
     const fullText = (currentQuestion?.questionText ?? '').trim();
-    // Show the first character immediately (no blank frame before the first tick)
     setDisplayedText(fullText.slice(0, 1));
     setIsTyping(true);
     let charIndex = 1;
@@ -189,7 +179,6 @@ export default function InterviewRoom() {
       }
     }, 22);
 
-    // Reset and start countdown timer
     setTimeLeft(QUESTION_TIME);
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     timerIntervalRef.current = setInterval(() => {
@@ -202,7 +191,6 @@ export default function InterviewRoom() {
     };
   }, [currentQuestion?.id]);
 
-  // Auto-submit when timer reaches 0 (answerRef avoids stale closure on answer state)
   useEffect(() => {
     if (timeLeft === 0 && answerRef.current.trim() && !isSubmitting && !evaluation) {
       void submitAnswer();
@@ -210,10 +198,8 @@ export default function InterviewRoom() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft]);
 
-  // Keep answerRef in sync so the timer effect always reads the latest value
   useEffect(() => { answerRef.current = answer; }, [answer]);
 
-  // Cancel speech and clear snapshot interval on unmount
   useEffect(() => {
     return () => {
       window.speechSynthesis.cancel();
@@ -225,7 +211,6 @@ export default function InterviewRoom() {
   useEffect(() => {
     const checkMicPermission = async () => {
       try {
-        // Check current permission state without triggering a prompt
         if (navigator.permissions && navigator.permissions.query) {
           const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
           setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
@@ -233,10 +218,9 @@ export default function InterviewRoom() {
           if (result.state === 'denied') {
             setShowMicModal(true);
           } else if (result.state === 'prompt') {
-            // Trigger the native browser permission popup
             try {
               const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-              stream.getTracks().forEach(t => t.stop()); // Release immediately
+              stream.getTracks().forEach(t => t.stop());
               setMicPermission('granted');
             } catch {
               setMicPermission('denied');
@@ -244,7 +228,6 @@ export default function InterviewRoom() {
             }
           }
 
-          // Listen for permission changes (user may change in site settings)
           result.onchange = () => {
             setMicPermission(result.state as 'granted' | 'denied' | 'prompt');
             if (result.state === 'granted') {
@@ -253,7 +236,6 @@ export default function InterviewRoom() {
             }
           };
         } else {
-          // Permissions API not supported — try requesting directly
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach(t => t.stop());
@@ -278,7 +260,6 @@ export default function InterviewRoom() {
       setMicPermission('granted');
       setShowMicModal(false);
       setErrorMsg('');
-      // Restart listening after permission is granted
       startContinuousListening();
     } catch {
       setMicPermission('denied');
@@ -324,7 +305,6 @@ export default function InterviewRoom() {
       return;
     }
 
-    // Stop any existing instance before creating a new one
     if (recognitionRef.current) {
       try { recognitionRef.current.onend = null; recognitionRef.current.stop(); } catch(e) {}
     }
@@ -332,21 +312,19 @@ export default function InterviewRoom() {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US'; // Using en-US for maximum compatibility
+    recognition.lang = 'en-US';
 
     recognition.onstart = () => {
       setIsRecording(true);
       isVoiceAnswerRef.current = true;
     };
 
-    // Track session-level finalized text so onend can save it
     let lastSessionFinalText = '';
 
     recognition.onresult = (event: any) => {
       let sessionFinalText = '';
       let interimText = '';
 
-      // Separate final vs interim results from this session
       for (let i = 0; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           sessionFinalText += (sessionFinalText ? ' ' : '') + event.results[i][0].transcript.trim();
@@ -355,18 +333,13 @@ export default function InterviewRoom() {
         }
       }
 
-      // Keep track of this session's finalized text for when onend fires
       lastSessionFinalText = sessionFinalText;
 
-      // Build the full current text: accumulated (from previous sessions) + this session's finals + interim
       const fullText = [accumulatedTranscriptRef.current, sessionFinalText, interimText]
         .map(t => t.trim())
         .filter(t => t.length > 0)
         .join(' ');
 
-      // TTS echo filter: reject the transcript if it is a contiguous substring of the question.
-      // This catches both clean prefix echoes ("introduce yourself and") and mid-word echoes
-      // ("uce yourself and") that occur when the mic starts while TTS audio is still fading.
       const qText = currentQuestion?.questionText || '';
       const qNorm = qText.toLowerCase().replace(/\s+/g, ' ').trim();
       const tNorm = fullText.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -376,11 +349,7 @@ export default function InterviewRoom() {
 
       setAnswer(fullText);
 
-      // ─── Trigger phrase detection ───
-      // Only fire on a finalized result (not interim)
       if (sessionFinalText) {
-        // Strip ALL trailing punctuation/spaces before matching so
-        // "that's all." and "that's all!" also match "that's all"
         const normalised = fullText.toLowerCase().replace(/[.,!?;:\s]+$/, '').trimEnd();
 
         const matchedTrigger = TRIGGER_PHRASES.find(phrase =>
@@ -390,18 +359,15 @@ export default function InterviewRoom() {
         console.log('[AutoSubmit] normalised:', normalised, '| matched:', matchedTrigger ?? 'none');
 
         if (matchedTrigger && !evaluationRef.current && !isSubmittingRef.current) {
-          // Strip the trigger phrase from the answer text
           const triggerIndex = normalised.lastIndexOf(matchedTrigger);
           const stripped = fullText
             .slice(0, triggerIndex)
             .replace(/[,.\s]+$/, '')
             .trim();
 
-          // Stop recognition immediately
           try { recognition.onend = null; recognition.stop(); } catch { /* already stopped */ }
           setIsRecording(false);
 
-          // Use stripped text if there's content, otherwise use whatever was said
           const finalAnswer = stripped.length > 0 ? stripped : accumulatedTranscriptRef.current.trim();
           if (finalAnswer.length > 0) {
             setAnswer(finalAnswer);
@@ -415,7 +381,6 @@ export default function InterviewRoom() {
     recognition.onerror = (event: any) => {
       console.error('Speech error:', event.error);
 
-      // Map each error code to a clear, actionable message
       switch (event.error) {
         case 'not-allowed':
         case 'permission-denied':
@@ -424,12 +389,9 @@ export default function InterviewRoom() {
           break;
 
         case 'no-speech':
-          // Completely normal — user just hasn't spoken yet. Don't show any error.
-          // onend will restart recognition automatically.
           break;
 
         case 'aborted':
-          // Triggered when we manually call recognition.stop() — not a real error.
           break;
 
         case 'audio-capture':
@@ -437,7 +399,6 @@ export default function InterviewRoom() {
           break;
 
         case 'network':
-          // Chrome Speech API requires internet. Retry silently once.
           setMicError('');
           setTimeout(() => {
             try { recognition.start(); } catch { /* already handled by onend */ }
@@ -454,11 +415,9 @@ export default function InterviewRoom() {
           break;
 
         default:
-          // Only show an error for truly unknown codes
           setMicError(`Microphone error (${event.error}). Try refreshing the page or clicking the mic button below.`);
       }
 
-      // Save any partial transcript before the session ends
       if (lastSessionFinalText.trim()) {
         accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, lastSessionFinalText]
           .map(t => t.trim())
@@ -470,7 +429,6 @@ export default function InterviewRoom() {
     };
 
     recognition.onend = () => {
-      // Save this session's finalized text into the accumulator before restarting
       if (lastSessionFinalText.trim()) {
         accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, lastSessionFinalText]
           .map(t => t.trim())
@@ -479,10 +437,8 @@ export default function InterviewRoom() {
         lastSessionFinalText = '';
       }
 
-      // Small delay before marking as not recording to allow HMR/State to settle
       setTimeout(() => setIsRecording(false), 100);
       
-      // Restart if we're still in the answering phase and not paused
       if (!evaluationRef.current && !isSubmittingRef.current && !isPausedRef.current && recognitionRef.current === recognition) {
         try {
           recognition.start();
@@ -499,7 +455,6 @@ export default function InterviewRoom() {
       console.error('Failed to start recognition:', e);
     }
 
-    // Capture snapshots for behavioral analysis (stored in ref so unmount effect can clear it)
     captureIntervalRef.current = setInterval(() => {
       if (!videoRef.current || !canvasRef.current || !cameraOn) return;
       const canvas = canvasRef.current;
@@ -521,7 +476,6 @@ export default function InterviewRoom() {
     };
   }, [currentQuestion, cameraOn]);
 
-  // Stores the active utterance to prevent Chrome garbage collection bug
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // ─── Speech Synthesis (humanized) ────────────────────────────────────────
@@ -532,10 +486,8 @@ export default function InterviewRoom() {
     const applyVoice = (u: SpeechSynthesisUtterance) => {
       const voices = window.speechSynthesis.getVoices();
       const preferred =
-        // Prefer Indian English (en-IN)
         voices.find((v) => v.lang === 'en-IN' && v.name.toLowerCase().includes('google')) ??
         voices.find((v) => v.lang === 'en-IN') ??
-        // Fallbacks
         voices.find((v) => v.name.toLowerCase().includes('google') && v.lang.startsWith('en')) ??
         voices.find((v) => v.lang === 'en-US') ??
         voices.find((v) => v.lang.startsWith('en')) ??
@@ -543,17 +495,14 @@ export default function InterviewRoom() {
       if (preferred) u.voice = preferred;
     };
 
-    // Question: custom rate/pitch from settings
     const questionU = new SpeechSynthesisUtterance(currentQuestion.questionText);
-    utteranceRef.current = questionU; // Keep reference to prevent GC bug
+    utteranceRef.current = questionU;
 
     applyVoice(questionU);
     questionU.rate = voiceRate;
     questionU.pitch = voicePitch;
     questionU.volume = 1.0;
 
-    // Delay mic start slightly after TTS so the speaker audio has fully faded
-    // before recognition begins (prevents TTS echo from being transcribed as the answer)
     questionU.onend = () => { setTimeout(() => startContinuousListening(), 400); };
     questionU.onerror = () => {
       console.warn('SpeechSynthesis error, starting mic anyway');
@@ -561,12 +510,10 @@ export default function InterviewRoom() {
     };
 
     const startSpeaking = () => {
-      // Avoid double speaking same question
       if (lastSpokenIdRef.current === currentQuestion.id) return;
       lastSpokenIdRef.current = currentQuestion.id;
 
       applyVoice(questionU);
-      // Small timeout helps Chrome process the cancel() before the next speak()
       setTimeout(() => {
         window.speechSynthesis.speak(questionU);
       }, 50);
@@ -584,14 +531,12 @@ export default function InterviewRoom() {
     startSpeaking();
   }, [currentQuestion, startContinuousListening, voiceRate, voicePitch]);
 
-  // Automatically speak the question immediately when it appears
   useEffect(() => {
     if (!currentQuestion) return;
     
     if (autoRead) {
       speakQuestion();
     } else {
-      // If not reading, start listening immediately
       startContinuousListening();
     }
   }, [currentQuestion?.id, autoRead, speakQuestion, startContinuousListening]);
@@ -602,7 +547,6 @@ export default function InterviewRoom() {
     if (!answerText.trim() || !currentQuestion) return;
     setAutoSubmitTriggered(false);
 
-    // Stop recording if active
     if (isRecording) {
       recognitionRef.current?.stop();
       setIsRecording(false);
@@ -613,7 +557,6 @@ export default function InterviewRoom() {
     setErrorMsg('');
     const timeTakenSeconds = Math.round((Date.now() - startTime) / 1000);
 
-    // Prepare history for pre-fetching next question in parallel
     const updatedHistory = [
       ...answeredHistoryRef.current,
       { question: currentQuestion.questionText, answer: answerText.trim() }
@@ -629,11 +572,11 @@ export default function InterviewRoom() {
           isVoice: isVoiceAnswerRef.current,
           timeTakenSeconds,
           history: updatedHistory,
-          snapshots, // Send snapshots for behavioral analysis
+          snapshots,
         }),
       });
 
-      setSnapshots([]); // Clear snapshots after submission
+      setSnapshots([]);
 
       if (!res.ok) {
         let serverMsg = 'Failed to save answer';
@@ -646,25 +589,20 @@ export default function InterviewRoom() {
 
       const data = await res.json() as { evaluation: Evaluation; nextQuestion: Question | null; isFollowUp?: boolean };
 
-      // Store evaluation (still used for results page) but DON'T show it mid-interview
       evaluationRef.current = data.evaluation;
       setIsFollowUp(data.isFollowUp ?? false);
 
-      // Stop the timer
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
-      // Update history
       answeredHistoryRef.current = updatedHistory;
 
       if (data.nextQuestion) {
-        // Auto-advance to next question immediately
         setCurrentQuestion(data.nextQuestion);
         setQuestionNumber((n) => n + 1);
         setAnswer('');
         accumulatedTranscriptRef.current = '';
         setStartTime(Date.now());
       } else {
-        // No more questions → complete the interview and go to results
         await handleEndInterview();
       }
 
@@ -677,11 +615,7 @@ export default function InterviewRoom() {
       isSubmittingRef.current = false;
     }
   };
-  // Sync ref so recognition.onresult (stale closure) always calls the freshest submitAnswer
   submitAnswerRef.current = submitAnswer;
-
-  // \u2500\u2500\u2500 Next Question (adaptive) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
 
   // ─── Pause / Resume ──────────────────────────────────────────────────────
   const handlePause = () => {
@@ -703,7 +637,6 @@ export default function InterviewRoom() {
   // ─── End Interview ────────────────────────────────────────────────────────
   const handleEndInterview = async () => {
     setIsEnding(true);
-    // Stop speech and mic before leaving
     window.speechSynthesis.cancel();
     recognitionRef.current?.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -729,59 +662,56 @@ export default function InterviewRoom() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md p-6"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-6"
         >
           <motion.div
-            initial={{ scale: 0.85, y: 30 }}
+            initial={{ scale: 0.95, y: 20 }}
             animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.85, y: 30 }}
+            exit={{ scale: 0.95, y: 20 }}
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-            className="bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-700/50 w-full max-w-md rounded-[2rem] p-8 shadow-2xl shadow-red-500/5"
+            className="bg-white border border-[#E5E5E5] w-full max-w-md p-8"
           >
             {/* Icon */}
             <div className="flex justify-center mb-6">
-              <div className="w-20 h-20 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
-                <MicOff size={36} className="text-red-400" />
+              <div className="w-16 h-16 border-2 border-[#D00000] flex items-center justify-center">
+                <MicOff size={28} className="text-[#D00000]" />
               </div>
             </div>
 
-            {/* Title */}
-            <h3 className="text-xl font-bold text-white text-center mb-2">
+            <h3 className="text-lg font-semibold text-black text-center mb-2">
               Microphone Access Required
             </h3>
-            <p className="text-sm text-gray-400 text-center mb-8">
+            <p className="text-sm text-[#666666] text-center mb-8">
               InterviewIQ needs your microphone to transcribe your answers in real-time.
             </p>
 
-            {/* Instructions */}
-            <div className="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-5 mb-6 space-y-3">
-              <p className="text-xs font-bold text-gray-300 uppercase tracking-widest mb-3">How to enable:</p>
+            <div className="border border-[#E5E5E5] p-5 mb-6 space-y-3">
+              <p className="text-xs font-medium text-[#999999] uppercase tracking-widest mb-3">How to enable:</p>
               <div className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">1</span>
-                <p className="text-sm text-gray-300">Click the <span className="font-bold text-white">🔒 lock icon</span> in your browser's address bar</p>
+                <span className="flex-shrink-0 w-6 h-6 border border-[#E5E5E5] flex items-center justify-center text-xs font-semibold text-black">1</span>
+                <p className="text-sm text-[#666666]">Click the <span className="font-medium text-black">🔒 lock icon</span> in your browser's address bar</p>
               </div>
               <div className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">2</span>
-                <p className="text-sm text-gray-300">Find <span className="font-bold text-white">Microphone</span> and set it to <span className="font-bold text-green-400">Allow</span></p>
+                <span className="flex-shrink-0 w-6 h-6 border border-[#E5E5E5] flex items-center justify-center text-xs font-semibold text-black">2</span>
+                <p className="text-sm text-[#666666]">Find <span className="font-medium text-black">Microphone</span> and set it to <span className="font-medium text-black">Allow</span></p>
               </div>
               <div className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">3</span>
-                <p className="text-sm text-gray-300">Click <span className="font-bold text-white">"Try Again"</span> below or refresh the page</p>
+                <span className="flex-shrink-0 w-6 h-6 border border-[#E5E5E5] flex items-center justify-center text-xs font-semibold text-black">3</span>
+                <p className="text-sm text-[#666666]">Click <span className="font-medium text-black">"Try Again"</span> below or refresh the page</p>
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col gap-3">
               <button
                 onClick={requestMicPermission}
-                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                className="w-full bg-black hover:bg-[#222222] text-white font-medium py-3.5 transition-all flex items-center justify-center gap-2"
               >
-                <Mic size={20} />
+                <Mic size={18} />
                 Try Again
               </button>
               <button
                 onClick={() => setShowMicModal(false)}
-                className="w-full text-gray-500 hover:text-gray-300 font-medium py-3 rounded-2xl transition-colors text-sm flex items-center justify-center gap-2"
+                className="w-full text-[#999999] hover:text-black font-medium py-3 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 Continue without microphone
               </button>
@@ -795,15 +725,15 @@ export default function InterviewRoom() {
   // ─── Guard ────────────────────────────────────────────────────────────────
   if (!currentQuestion) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-8 bg-[#0a0a0f]">
+      <div className="min-h-screen flex items-center justify-center p-8 bg-white">
         {micPermissionModal}
-        <div className="text-center text-gray-400 space-y-4">
-          <AlertCircle size={48} className="mx-auto text-yellow-400" />
-          <p className="text-xl font-medium">No interview session found.</p>
+        <div className="text-center text-[#666666] space-y-4">
+          <AlertCircle size={40} className="mx-auto text-[#999999]" />
+          <p className="text-lg font-medium">No interview session found.</p>
           <p className="text-sm">Please go back and start an interview first.</p>
           <button
             onClick={() => navigate('/dashboard')}
-            className="mt-4 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl transition-colors"
+            className="mt-4 bg-black hover:bg-[#222222] text-white px-6 py-3 transition-colors"
           >
             Go to Dashboard
           </button>
@@ -812,13 +742,13 @@ export default function InterviewRoom() {
     );
   }
 
-  const categoryColor: Record<string, string> = {
-    TECHNICAL:  'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    BEHAVIORAL: 'bg-green-500/20 text-green-400 border-green-500/30',
+  const categoryStyle: Record<string, string> = {
+    TECHNICAL:  'border-[#E5E5E5] text-black bg-[#FAFAFA]',
+    BEHAVIORAL: 'border-[#E5E5E5] text-black bg-[#FAFAFA]',
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row gap-6 p-6 bg-[#0a0a0f]">
+    <div className="min-h-screen flex flex-col md:flex-row gap-6 p-6 bg-white">
 
       {/* ── Pause Overlay ── */}
       <AnimatePresence>
@@ -827,26 +757,26 @@ export default function InterviewRoom() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-lg"
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-white/95"
           >
             <motion.div
-              initial={{ scale: 0.9, y: 20 }}
+              initial={{ scale: 0.95, y: 16 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-gray-900 border border-gray-700 rounded-[2rem] p-10 shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full mx-6"
+              exit={{ scale: 0.95, y: 16 }}
+              className="border border-[#E5E5E5] p-10 flex flex-col items-center gap-6 max-w-sm w-full mx-6"
             >
-              <div className="w-20 h-20 rounded-full bg-yellow-500/10 border-2 border-yellow-500/30 flex items-center justify-center">
-                <Pause size={36} className="text-yellow-400" />
+              <div className="w-16 h-16 border-2 border-[#E5E5E5] flex items-center justify-center">
+                <Pause size={28} className="text-[#999999]" />
               </div>
               <div className="text-center">
-                <h3 className="text-2xl font-bold text-white">Interview Paused</h3>
-                <p className="text-gray-400 text-sm mt-2">Your mic and timer are paused. Resume when you're ready.</p>
+                <h3 className="text-xl font-semibold text-black">Interview Paused</h3>
+                <p className="text-[#666666] text-sm mt-2">Your mic and timer are paused. Resume when you're ready.</p>
               </div>
               <button
                 onClick={handleResume}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/20 w-full justify-center"
+                className="flex items-center gap-2 bg-black hover:bg-[#222222] text-white font-medium px-8 py-3.5 transition-all w-full justify-center"
               >
-                <Play size={20} /> Resume Interview
+                <Play size={18} /> Resume Interview
               </button>
             </motion.div>
           </motion.div>
@@ -860,24 +790,24 @@ export default function InterviewRoom() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6"
           >
             <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
+              initial={{ scale: 0.95, y: 16 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-gray-900 border border-gray-800 w-full max-w-md rounded-[2rem] p-8 shadow-2xl"
+              exit={{ scale: 0.95, y: 16 }}
+              className="bg-white border border-[#E5E5E5] w-full max-w-md p-8"
             >
               <div className="flex justify-between items-center mb-8">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Briefcase size={22} className="text-purple-400" />
+                <h3 className="text-lg font-semibold text-black flex items-center gap-2">
+                  <Volume2 size={20} />
                   Voice Settings
                 </h3>
                 <button 
                   onClick={() => setShowSettings(false)}
-                  className="text-gray-500 hover:text-white transition-colors"
+                  className="text-[#999999] hover:text-black transition-colors"
                 >
-                  <X size={24} />
+                  <X size={20} />
                 </button>
               </div>
 
@@ -885,16 +815,16 @@ export default function InterviewRoom() {
                 {/* Auto Read Toggle */}
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-bold text-gray-200">Auto-read Questions</p>
-                    <p className="text-xs text-gray-500">AI will speak as soon as the question appears.</p>
+                    <p className="text-sm font-medium text-black">Auto-read Questions</p>
+                    <p className="text-xs text-[#999999]">AI will speak as soon as the question appears.</p>
                   </div>
                   <button 
                     onClick={() => setAutoRead(!autoRead)}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${autoRead ? 'bg-purple-600' : 'bg-gray-800'}`}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${autoRead ? 'bg-black' : 'bg-[#E5E5E5]'}`}
                   >
                     <motion.div 
-                      animate={{ x: autoRead ? 26 : 4 }}
-                      className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm"
+                      animate={{ x: autoRead ? 22 : 3 }}
+                      className="absolute top-0.5 w-4 h-4 bg-white rounded-full border border-[#E5E5E5]"
                     />
                   </button>
                 </div>
@@ -902,8 +832,8 @@ export default function InterviewRoom() {
                 {/* Voice Rate */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <p className="text-sm font-bold text-gray-200">Speaking Speed</p>
-                    <span className="text-xs font-mono text-purple-400">{voiceRate.toFixed(2)}x</span>
+                    <p className="text-sm font-medium text-black">Speaking Speed</p>
+                    <span className="text-xs font-mono text-[#999999]">{voiceRate.toFixed(2)}x</span>
                   </div>
                   <input 
                     type="range" 
@@ -912,9 +842,9 @@ export default function InterviewRoom() {
                     step="0.05"
                     value={voiceRate}
                     onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
-                    className="w-full accent-purple-500 bg-gray-800 rounded-lg h-1.5 appearance-none cursor-pointer"
+                    className="w-full accent-black h-1 appearance-none cursor-pointer bg-[#E5E5E5]"
                   />
-                  <div className="flex justify-between text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-widest">
+                  <div className="flex justify-between text-[10px] text-[#CCCCCC] mt-2 font-medium uppercase tracking-widest">
                     <span>Slow</span>
                     <span>Fast</span>
                   </div>
@@ -923,8 +853,8 @@ export default function InterviewRoom() {
                 {/* Voice Pitch */}
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <p className="text-sm font-bold text-gray-200">Voice Pitch</p>
-                    <span className="text-xs font-mono text-purple-400">{voicePitch.toFixed(2)}</span>
+                    <p className="text-sm font-medium text-black">Voice Pitch</p>
+                    <span className="text-xs font-mono text-[#999999]">{voicePitch.toFixed(2)}</span>
                   </div>
                   <input 
                     type="range" 
@@ -933,9 +863,9 @@ export default function InterviewRoom() {
                     step="0.05"
                     value={voicePitch}
                     onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
-                    className="w-full accent-purple-500 bg-gray-800 rounded-lg h-1.5 appearance-none cursor-pointer"
+                    className="w-full accent-black h-1 appearance-none cursor-pointer bg-[#E5E5E5]"
                   />
-                  <div className="flex justify-between text-[10px] text-gray-600 mt-2 font-bold uppercase tracking-widest">
+                  <div className="flex justify-between text-[10px] text-[#CCCCCC] mt-2 font-medium uppercase tracking-widest">
                     <span>Deep</span>
                     <span>High</span>
                   </div>
@@ -947,9 +877,9 @@ export default function InterviewRoom() {
                   speakQuestion();
                   setShowSettings(false);
                 }}
-                className="w-full mt-10 bg-purple-600 hover:bg-purple-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2"
+                className="w-full mt-10 bg-black hover:bg-[#222222] text-white font-medium py-3.5 transition-all flex items-center justify-center gap-2"
               >
-                <Volume2 size={20} />
+                <Volume2 size={18} />
                 Test Voice & Close
               </button>
             </motion.div>
@@ -960,14 +890,14 @@ export default function InterviewRoom() {
       {/* ── Left Panel ── */}
       <div className="w-full md:w-1/3 flex flex-col gap-4">
         {errorMsg && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm shadow-lg backdrop-blur-sm">
+          <div className="bg-[#FEF2F2] border border-[#FECACA] text-[#D00000] p-3 flex items-center gap-2 text-sm">
             <AlertCircle size={16} />
             <p>{errorMsg}</p>
           </div>
         )}
 
         {/* Camera */}
-        <div className="relative aspect-video bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 flex items-center justify-center shadow-lg">
+        <div className="relative aspect-video bg-[#FAFAFA] overflow-hidden border border-[#E5E5E5] flex items-center justify-center">
           {cameraOn ? (
             <>
               <video
@@ -977,57 +907,57 @@ export default function InterviewRoom() {
                 muted
                 className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]"
               />
-              <span className="absolute bottom-4 left-4 text-xs font-medium bg-black/50 px-2 py-1 rounded text-white backdrop-blur-md">
+              <span className="absolute bottom-3 left-3 text-xs font-medium bg-black/60 px-2 py-1 text-white">
                 You
               </span>
             </>
           ) : (
-            <div className="flex flex-col items-center text-gray-600">
-              <CameraOff className="w-16 h-16 mb-2" />
-              <span>Camera Disabled</span>
+            <div className="flex flex-col items-center text-[#CCCCCC]">
+              <CameraOff className="w-12 h-12 mb-2" />
+              <span className="text-sm">Camera Disabled</span>
             </div>
           )}
-          <div className="absolute bottom-4 right-4 flex gap-2">
+          <div className="absolute bottom-3 right-3 flex gap-2">
             <button
               onClick={() => setShowSettings(true)}
-              className="bg-gray-900/80 hover:bg-gray-700 text-white p-3 rounded-full backdrop-blur-md transition-colors z-10"
+              className="bg-white/90 hover:bg-white border border-[#E5E5E5] text-black p-2.5 transition-colors z-10"
               title="Voice Settings"
             >
-              <Briefcase size={20} />
+              <Volume2 size={16} />
             </button>
             <button
               onClick={() => setCameraOn(!cameraOn)}
-              className="bg-gray-900/80 hover:bg-gray-700 text-white p-3 rounded-full backdrop-blur-md transition-colors z-10"
+              className="bg-white/90 hover:bg-white border border-[#E5E5E5] text-black p-2.5 transition-colors z-10"
             >
-              {cameraOn ? <Camera size={20} /> : <CameraOff size={20} />}
+              {cameraOn ? <Camera size={16} /> : <CameraOff size={16} />}
             </button>
           </div>
         </div>
 
         {/* Status */}
-        <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 flex-1">
-          <h3 className="font-semibold text-lg mb-4 text-gray-200">Interview Status</h3>
-          <div className="space-y-4 text-sm text-gray-400">
+        <div className="border border-[#E5E5E5] p-6 flex-1">
+          <h3 className="font-medium text-base mb-4 text-black">Interview Status</h3>
+          <div className="space-y-4 text-sm text-[#666666]">
 
             {interviewId && (
               <div className="flex justify-between items-center">
                 <span>Interview ID</span>
-                <span className="font-mono text-gray-500">#{interviewId}</span>
+                <span className="font-mono text-[#999999]">#{interviewId}</span>
               </div>
             )}
             <div className="flex justify-between items-center">
               <span>Answered</span>
-              <span className="font-medium text-green-400">
+              <span className="font-medium text-black">
                 {answeredHistoryRef.current.length} question{answeredHistoryRef.current.length !== 1 ? 's' : ''}
               </span>
             </div>
-            {/* Pulsing "live" indicator */}
+            {/* Live indicator */}
             <div className="flex items-center gap-2 pt-2">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-40" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-black" />
               </span>
-              <span className="text-xs text-gray-500">Interview in progress</span>
+              <span className="text-xs text-[#999999]">Interview in progress</span>
             </div>
           </div>
         </div>
@@ -1040,22 +970,22 @@ export default function InterviewRoom() {
         <AnimatePresence mode="wait">
           <motion.div
             key={currentQuestion.id}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
-            className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg relative"
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="border border-[#E5E5E5] p-8 relative"
           >
             {/* Category + Difficulty + Timer row */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${categoryColor[currentQuestion.category] ?? 'bg-purple-500/10 text-purple-400 border-purple-500/20'}`}>
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium border ${categoryStyle[currentQuestion.category] ?? 'border-[#E5E5E5] text-black bg-[#FAFAFA]'}`}>
                 {currentQuestion.category === 'TECHNICAL'  && <Code size={14} />}
                 {currentQuestion.category === 'BEHAVIORAL' && <User size={14} />}
-                <span className="text-xs font-bold tracking-wider">
+                <span className="text-xs font-medium tracking-wider">
                   {currentQuestion.category}
                 </span>
               </div>
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-[#999999]">
                 Difficulty: {'★'.repeat(currentQuestion.difficulty)}{'☆'.repeat(5 - currentQuestion.difficulty)}
               </span>
 
@@ -1063,43 +993,42 @@ export default function InterviewRoom() {
               <AnimatePresence>
                 {isFollowUp && (
                   <motion.span
-                    initial={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0 }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium border border-[#E5E5E5] bg-[#FAFAFA] text-black"
                   >
                     <Lightbulb size={11} /> Follow-up
                   </motion.span>
                 )}
               </AnimatePresence>
 
-              {/* Countdown timer ring + Speaker + Pause — all in one row, no overlap */}
               <div className="ml-auto flex items-center gap-2">
                 {/* Speaker button */}
                 <button
                   onClick={speakQuestion}
-                  className="w-9 h-9 flex items-center justify-center bg-gray-800/70 hover:bg-gray-700 text-gray-400 hover:text-purple-400 rounded-full transition-all"
+                  className="w-8 h-8 flex items-center justify-center border border-[#E5E5E5] hover:border-black text-[#999999] hover:text-black transition-all"
                   title="Read Question Aloud"
                 >
-                  <Volume2 size={16} />
+                  <Volume2 size={14} />
                 </button>
 
                 {/* Timer ring */}
-                <div className="relative w-9 h-9">
+                <div className="relative w-8 h-8">
                   <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="#1f2937" strokeWidth="3"/>
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="#E5E5E5" strokeWidth="2"/>
                     <circle
                       cx="18" cy="18" r="15" fill="none"
-                      stroke={timeLeft <= 10 ? '#ef4444' : timeLeft <= 30 ? '#f59e0b' : '#8b5cf6'}
-                      strokeWidth="3"
+                      stroke={timeLeft <= 10 ? '#D00000' : '#000000'}
+                      strokeWidth="2"
                       strokeDasharray="94.2"
                       strokeDashoffset={94.2 - (94.2 * timeLeft) / QUESTION_TIME}
                       strokeLinecap="round"
                       style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.3s' }}
                     />
                   </svg>
-                  <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-bold ${
-                    timeLeft <= 10 ? 'text-red-400' : timeLeft <= 30 ? 'text-amber-400' : 'text-purple-400'
+                  <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-semibold ${
+                    timeLeft <= 10 ? 'text-[#D00000]' : 'text-black'
                   }`}>
                     {timeLeft}
                   </span>
@@ -1109,18 +1038,18 @@ export default function InterviewRoom() {
                 {!evaluation && (
                   <button
                     onClick={handlePause}
-                    className="w-9 h-9 flex items-center justify-center bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-full transition-all"
+                    className="w-8 h-8 flex items-center justify-center border border-[#E5E5E5] hover:border-black text-[#999999] hover:text-black transition-all"
                     title="Pause interview"
                   >
-                    <Pause size={14} />
+                    <Pause size={13} />
                   </button>
                 )}
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-white leading-relaxed mt-1">
+            <h2 className="text-xl font-semibold text-black leading-relaxed mt-1">
               {displayedText}
               {isTyping && (
-                <span className="inline-block w-0.5 h-6 bg-purple-400 ml-0.5 align-middle animate-pulse" />
+                <span className="inline-block w-0.5 h-5 bg-black ml-0.5 align-middle animate-pulse" />
               )}
             </h2>
           </motion.div>
@@ -1134,30 +1063,28 @@ export default function InterviewRoom() {
                 value={answer}
                 readOnly
                 placeholder="The interviewer is listening... your words will appear here as you speak."
-                className="w-full h-[450px] min-h-[400px] bg-gray-900/50 border border-gray-700 rounded-xl p-5 text-white placeholder-gray-500 focus:outline-none transition-all resize-none text-lg leading-relaxed shadow-inner"
+                className="w-full h-[450px] min-h-[400px] bg-white border border-[#E5E5E5] p-5 text-black placeholder-[#CCCCCC] focus:outline-none focus:border-black transition-all resize-none text-base leading-relaxed"
               />
               <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
                 <div className="flex items-center gap-3">
                   {isRecording && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 rounded-full border border-red-500/30">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                      <span className="text-xs font-medium text-red-400 uppercase tracking-wider">Listening</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#FAFAFA] border border-[#E5E5E5]">
+                      <div className="w-2 h-2 bg-black rounded-full animate-pulse" />
+                      <span className="text-xs font-medium text-black uppercase tracking-wider">Listening</span>
                     </div>
                   )}
 
-                  {/* Auto-submit indicator */}
                   {autoSubmitTriggered && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 rounded-full border border-purple-500/30">
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-ping" />
-                      <span className="text-xs font-medium text-purple-300 uppercase tracking-wider">Auto-submitting…</span>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#FAFAFA] border border-[#E5E5E5]">
+                      <div className="w-2 h-2 bg-black rounded-full animate-ping" />
+                      <span className="text-xs font-medium text-black uppercase tracking-wider">Auto-submitting…</span>
                     </div>
                   )}
 
-                  {/* Fallback Manual Microphone Button */}
                   {!isRecording && (
                     <button
                       onClick={startContinuousListening}
-                      className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg bg-gray-900/80"
+                      className="flex items-center gap-2 text-[#999999] hover:text-black transition-colors text-xs font-medium border border-[#E5E5E5] px-3 py-1.5 bg-white"
                     >
                       <Mic size={14} />
                       <span>Mic didn't start? Click to Listen</span>
@@ -1165,11 +1092,11 @@ export default function InterviewRoom() {
                   )}
                 </div>
                 {micError && (
-                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg max-w-sm truncate" title={micError}>
+                  <div className="text-xs text-[#D00000] bg-[#FEF2F2] border border-[#FECACA] px-3 py-1.5 max-w-sm truncate" title={micError}>
                     {micError}
                   </div>
                 )}
-                <span className={`text-xs font-medium font-mono ${answer.length > 500 ? 'text-orange-400' : 'text-gray-500'}`}>
+                <span className={`text-xs font-medium font-mono ${answer.length > 500 ? 'text-[#999999]' : 'text-[#CCCCCC]'}`}>
                   {answer.length} chars
                 </span>
               </div>
@@ -1180,7 +1107,7 @@ export default function InterviewRoom() {
               <button
                 onClick={handleEndInterview}
                 disabled={isEnding || isSubmitting}
-                className="flex items-center gap-2 px-5 py-3.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-5 py-3 border border-[#E5E5E5] hover:border-black text-[#666666] hover:text-black font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <LogOut size={16} />
                 End Interview
@@ -1190,50 +1117,48 @@ export default function InterviewRoom() {
               <button
                 onClick={handlePause}
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-3.5 rounded-xl border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 hover:text-yellow-300 font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-5 py-3 border border-[#E5E5E5] hover:border-black text-[#666666] hover:text-black font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Pause size={16} />
                 Pause
               </button>
 
               <div className="flex items-center gap-3 ml-auto">
-                {/* Fallback mic button */}
                 {!isRecording && (
                   <button
                     onClick={startContinuousListening}
-                    className="flex items-center gap-2 text-gray-500 hover:text-purple-400 transition-colors text-xs font-medium border border-gray-800 px-3 py-1.5 rounded-lg"
+                    className="flex items-center gap-2 text-[#999999] hover:text-black transition-colors text-xs font-medium border border-[#E5E5E5] px-3 py-1.5"
                   >
                     <Mic size={14} />
                     <span>Mic didn't start? Click to Listen</span>
                   </button>
                 )}
 
-                {/* Submit */}
                 <button
-                  onClick={submitAnswer}
+                  onClick={() => submitAnswer()}
                   disabled={!answer.trim() || isSubmitting}
-                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-10 py-4 rounded-xl transition-all font-bold shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed transform active:scale-95 border border-purple-400/30"
+                  className="flex items-center gap-2 bg-black hover:bg-[#222222] text-white px-10 py-3.5 transition-all font-medium disabled:bg-[#E5E5E5] disabled:text-[#999999] disabled:cursor-not-allowed active:scale-[0.98]"
                 >
                   {isSubmitting ? (
-                    <><Loader2 size={20} className="animate-spin" /><span>Saving…</span></>
+                    <><Loader2 size={18} className="animate-spin" /><span>Saving…</span></>
                   ) : (
-                    <><span>Submit Answer</span><Send size={20} /></>
+                    <><span>Submit Answer</span><Send size={18} /></>
                   )}
                 </button>
               </div>
             </div>
           </div>
         ) : (
-          /* Submitting — show a brief transition state instead of evaluation card */
+          /* Submitting state */
           <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
+            initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-lg flex items-center justify-center"
+            className="flex-1 border border-[#E5E5E5] p-8 flex items-center justify-center"
           >
             <div className="flex flex-col items-center gap-4 text-center">
-              <Loader2 size={36} className="animate-spin text-purple-400" />
-              <p className="text-gray-400 text-lg font-medium">Saving your answer…</p>
-              <p className="text-gray-600 text-sm">Next question coming right up</p>
+              <Loader2 size={28} className="animate-spin text-black" />
+              <p className="text-[#666666] text-base font-medium">Saving your answer…</p>
+              <p className="text-[#999999] text-sm">Next question coming right up</p>
             </div>
           </motion.div>
         )}

@@ -81,11 +81,11 @@ export default function Results() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f]">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-          className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full"
+          className="w-10 h-10 border-2 border-black border-t-transparent rounded-full"
         />
       </div>
     );
@@ -93,14 +93,14 @@ export default function Results() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f] p-8">
+      <div className="min-h-screen flex items-center justify-center bg-white p-8">
         <div className="text-center space-y-4">
-          <AlertCircle size={64} className="mx-auto text-red-500" />
-          <h2 className="text-2xl font-bold text-white">Oops! Could not load results</h2>
-          <p className="text-gray-400 max-w-md mx-auto">{error || 'The interview session was not found.'}</p>
+          <AlertCircle size={48} className="mx-auto text-[#D00000]" />
+          <h2 className="text-2xl font-bold text-black">Could not load results</h2>
+          <p className="text-[#666666] max-w-md mx-auto">{error || 'The interview session was not found.'}</p>
           <button
             onClick={() => navigate('/')}
-            className="bg-gray-800 text-white px-6 py-2 rounded-xl border border-gray-700 hover:bg-gray-700 transition-all"
+            className="border border-[#E5E5E5] hover:border-black text-black px-6 py-2 transition-all"
           >
             Go Back Home
           </button>
@@ -108,18 +108,6 @@ export default function Results() {
       </div>
     );
   }
-
-  const getScoreColor = (score: number) => {
-    if (score >= 8) return 'text-green-400';
-    if (score >= 5) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const getScoreBg = (score: number) => {
-    if (score >= 8) return 'bg-green-500/10 border-green-500/20';
-    if (score >= 5) return 'bg-yellow-500/10 border-yellow-500/20';
-    return 'bg-red-500/10 border-red-500/20';
-  };
 
   // ─── Build radar chart data from expectedConcepts + scores ─────────────────
   const conceptScores: Record<string, { total: number; count: number }> = {};
@@ -150,20 +138,14 @@ export default function Results() {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white pb-20 overflow-x-hidden">
-      {/* Background decoration */}
-      <div className="fixed top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px]" />
-      </div>
-
-      <div className="max-w-5xl mx-auto px-6 pt-12 relative z-10">
+    <div className="min-h-screen bg-white text-black pb-20 overflow-x-hidden">
+      <div className="max-w-5xl mx-auto px-6 pt-12">
         {/* Navigation */}
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-8 group"
+          className="flex items-center gap-2 text-[#666666] hover:text-black transition-colors mb-8 group"
         >
-          <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
           Back to Dashboard
         </button>
 
@@ -171,71 +153,70 @@ export default function Results() {
         <div className="flex flex-col md:flex-row gap-8 items-start mb-12">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold tracking-widest rounded-full uppercase">
+              <span className="px-3 py-1 border border-[#E5E5E5] text-[#666666] text-xs font-medium tracking-widest uppercase">
                 Interview Report
               </span>
-              <span className="text-gray-500 text-sm">
+              <span className="text-[#999999] text-sm">
                 {new Date(data.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl md:text-4xl font-bold mb-4 text-black">
               {data.jobRole}
             </h1>
-            <p className="text-gray-400 text-lg max-w-2xl leading-relaxed">
+            <p className="text-[#666666] text-base max-w-2xl leading-relaxed">
               {data.feedbackSummary}
             </p>
           </div>
 
           {/* Overall Score Circle */}
-          <div className="flex flex-col items-center bg-gray-900/50 backdrop-blur-xl border border-gray-800 p-8 rounded-[2.5rem] shadow-2xl shrink-0">
-            <div className="relative w-32 h-32 flex items-center justify-center">
+          <div className="flex flex-col items-center border border-[#E5E5E5] p-8 shrink-0">
+            <div className="relative w-28 h-28 flex items-center justify-center">
               <svg className="w-full h-full transform -rotate-90">
-                <circle cx="64" cy="64" r="58" fill="none" stroke="currentColor" strokeWidth="8" className="text-gray-800" />
+                <circle cx="56" cy="56" r="50" fill="none" stroke="#E5E5E5" strokeWidth="4" />
                 <motion.circle
-                  cx="64" cy="64" r="58" fill="none" stroke="currentColor" strokeWidth="8"
-                  strokeDasharray="364.4"
-                  initial={{ strokeDashoffset: 364.4 }}
-                  animate={{ strokeDashoffset: 364.4 - (364.4 * (data.finalScore || 0)) / 10 }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                  className={getScoreColor(data.finalScore || 0)}
+                  cx="56" cy="56" r="50" fill="none" stroke="#000000" strokeWidth="4"
+                  strokeDasharray="314.16"
+                  initial={{ strokeDashoffset: 314.16 }}
+                  animate={{ strokeDashoffset: 314.16 - (314.16 * (data.finalScore || 0)) / 10 }}
+                  transition={{ duration: 1.2, ease: 'easeOut' }}
                 />
               </svg>
               <div className="absolute flex flex-col items-center">
-                <span className="text-4xl font-bold">{data.finalScore || 0}</span>
-                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">/ 10</span>
+                <span className="text-3xl font-bold">{data.finalScore || 0}</span>
+                <span className="text-[10px] text-[#999999] font-medium uppercase tracking-widest">/ 10</span>
               </div>
             </div>
-            <span className="mt-4 font-bold text-xs uppercase tracking-[0.2em] text-gray-500">Overall Score</span>
+            <span className="mt-4 font-medium text-xs uppercase tracking-[0.15em] text-[#999999]">Overall Score</span>
           </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
-          <div className="bg-gray-900/40 border border-gray-800/50 p-6 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400">
-              <Target size={24} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-[#E5E5E5] border border-[#E5E5E5] mb-12">
+          <div className="bg-white p-6 flex items-center gap-4">
+            <div className="w-10 h-10 border border-[#E5E5E5] flex items-center justify-center text-black">
+              <Target size={20} />
             </div>
             <div>
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Total Questions</p>
-              <p className="text-xl font-bold">{data.questions.length}</p>
+              <p className="text-[#999999] text-xs font-medium uppercase tracking-wider mb-1">Total Questions</p>
+              <p className="text-xl font-semibold">{data.questions.length}</p>
             </div>
           </div>
-          <div className="bg-gray-900/40 border border-gray-800/50 p-6 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400">
-              <Award size={24} />
+          <div className="bg-white p-6 flex items-center gap-4">
+            <div className="w-10 h-10 border border-[#E5E5E5] flex items-center justify-center text-black">
+              <Award size={20} />
             </div>
             <div>
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Strong Answers</p>
-              <p className="text-xl font-bold">{data.questions.filter(q => (q.answers[0]?.score ?? 0) >= 8).length}</p>
+              <p className="text-[#999999] text-xs font-medium uppercase tracking-wider mb-1">Strong Answers</p>
+              <p className="text-xl font-semibold">{data.questions.filter(q => (q.answers[0]?.score ?? 0) >= 8).length}</p>
             </div>
           </div>
-          <div className="bg-gray-900/40 border border-gray-800/50 p-6 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 bg-orange-500/10 rounded-xl flex items-center justify-center text-orange-400">
-              <Clock size={24} />
+          <div className="bg-white p-6 flex items-center gap-4">
+            <div className="w-10 h-10 border border-[#E5E5E5] flex items-center justify-center text-black">
+              <Clock size={20} />
             </div>
             <div>
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1">Avg Time / Q</p>
-              <p className="text-xl font-bold">
+              <p className="text-[#999999] text-xs font-medium uppercase tracking-wider mb-1">Avg Time / Q</p>
+              <p className="text-xl font-semibold">
                 {data.questions.length > 0
                   ? `${Math.round(data.questions.reduce((s, q) => s + (q.answers[0]?.timeTakenSeconds ?? 0), 0) / data.questions.length)}s`
                   : '--'}
@@ -245,15 +226,15 @@ export default function Results() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-8 border-b border-gray-800 overflow-x-auto">
+        <div className="flex gap-0 mb-8 border-b border-[#E5E5E5] overflow-x-auto">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-bold whitespace-nowrap transition-all border-b-2 -mb-px ${
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 -mb-px ${
                 activeTab === tab.key
-                  ? 'border-purple-500 text-purple-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300'
+                  ? 'border-black text-black'
+                  : 'border-transparent text-[#999999] hover:text-[#666666]'
               }`}
             >
               <tab.icon size={15} />
@@ -264,41 +245,40 @@ export default function Results() {
 
         {/* ── Tab: Session Breakdown ── */}
         {activeTab === 'breakdown' && (
-          <div className="space-y-4">
+          <div className="space-y-0 border border-[#E5E5E5] divide-y divide-[#E5E5E5]">
             {data.questions.map((q, idx) => {
               const answer = q.answers[0];
               const isExpanded = expandedQuestion === q.id;
               return (
                 <motion.div
                   key={q.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  className="bg-gray-900/50 border border-gray-800 rounded-2xl overflow-hidden shadow-lg"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: idx * 0.03 }}
                 >
                   <div
                     onClick={() => setExpandedQuestion(isExpanded ? null : q.id)}
-                    className="p-6 cursor-pointer hover:bg-gray-800/30 transition-colors flex items-center justify-between gap-4"
+                    className="p-6 cursor-pointer hover:bg-[#FAFAFA] transition-colors flex items-center justify-between gap-4"
                   >
                     <div className="flex-1 flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                      <div className="w-8 h-8 border border-[#E5E5E5] flex items-center justify-center text-xs font-semibold text-[#999999] shrink-0">
                         {idx + 1}
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-200 mb-1 leading-tight">{q.questionText}</h3>
+                        <h3 className="font-medium text-black mb-1 leading-tight">{q.questionText}</h3>
                         <div className="flex flex-wrap gap-2 items-center">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-gray-500 uppercase tracking-widest border border-gray-700">
+                          <span className="text-[10px] font-medium px-2 py-0.5 bg-[#F5F5F5] text-[#666666] uppercase tracking-widest border border-[#E5E5E5]">
                             {q.category}
                           </span>
-                          <span className="text-[10px] text-gray-600">{answer?.timeTakenSeconds || 0}s response</span>
+                          <span className="text-[10px] text-[#999999]">{answer?.timeTakenSeconds || 0}s response</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-4 shrink-0">
-                      <div className={`px-4 py-1.5 rounded-xl border text-sm font-bold ${getScoreBg(answer?.score || 0)} ${getScoreColor(answer?.score || 0)}`}>
+                      <div className="px-3 py-1 border border-[#E5E5E5] text-sm font-semibold text-black">
                         {answer?.score || 0}/10
                       </div>
-                      {isExpanded ? <ChevronDown size={20} className="text-gray-600" /> : <ChevronRight size={20} className="text-gray-600" />}
+                      {isExpanded ? <ChevronDown size={18} className="text-[#999999]" /> : <ChevronRight size={18} className="text-[#999999]" />}
                     </div>
                   </div>
 
@@ -308,57 +288,57 @@ export default function Results() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden bg-gray-950/30"
+                        className="overflow-hidden"
                       >
-                        <div className="p-6 pt-0 border-t border-gray-800/50 space-y-6">
+                        <div className="p-6 pt-0 border-t border-[#E5E5E5] space-y-6 bg-[#FAFAFA]">
                           <div className="mt-6">
-                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Your Answer</p>
-                            <div className="text-gray-300 text-sm leading-relaxed italic bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+                            <p className="text-[10px] font-medium text-[#999999] uppercase tracking-widest mb-2">Your Answer</p>
+                            <div className="text-[#666666] text-sm leading-relaxed italic bg-white p-4 border border-[#E5E5E5]">
                               "{answer?.userAnswer || 'No answer recorded.'}"
                             </div>
                           </div>
                           <div>
-                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">AI Feedback</p>
-                            <p className="text-gray-300 text-sm leading-relaxed">{answer?.feedback || 'Evaluation pending.'}</p>
+                            <p className="text-[10px] font-medium text-[#999999] uppercase tracking-widest mb-2">AI Feedback</p>
+                            <p className="text-[#666666] text-sm leading-relaxed">{answer?.feedback || 'Evaluation pending.'}</p>
                           </div>
                           {answer?.idealAnswer && (
-                            <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-                              <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                            <div className="p-4 bg-white border border-[#E5E5E5]">
+                              <p className="text-[10px] font-medium text-black uppercase tracking-widest mb-2 flex items-center gap-1.5">
                                 <Lightbulb size={12} /> Model Answer
                               </p>
-                              <p className="text-amber-200/80 text-sm leading-relaxed italic">{answer.idealAnswer}</p>
+                              <p className="text-[#666666] text-sm leading-relaxed italic">{answer.idealAnswer}</p>
                             </div>
                           )}
                           {answer?.missingConcepts?.length > 0 && (
                             <div>
-                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Missing Concepts</p>
+                              <p className="text-[10px] font-medium text-[#999999] uppercase tracking-widest mb-2">Missing Concepts</p>
                               <div className="flex flex-wrap gap-2">
                                 {answer.missingConcepts.map(c => (
-                                  <span key={c} className="bg-red-500/10 text-red-400 text-[10px] font-bold px-2 py-1 rounded-md border border-red-500/20 uppercase tracking-wider">{c}</span>
+                                  <span key={c} className="bg-[#F5F5F5] text-black text-[10px] font-medium px-2 py-1 border border-[#E5E5E5] uppercase tracking-wider">{c}</span>
                                 ))}
                               </div>
                             </div>
                           )}
                           {answer?.behavioralFeedback && (
-                            <div className="bg-purple-500/5 border border-purple-500/10 p-5 rounded-2xl">
-                              <p className="text-[10px] font-bold text-purple-400 uppercase tracking-[0.2em] mb-4">Behavioral Analysis</p>
+                            <div className="bg-white border border-[#E5E5E5] p-5">
+                              <p className="text-[10px] font-medium text-black uppercase tracking-[0.15em] mb-4">Behavioral Analysis</p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                                 <div>
-                                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Eye Contact</p>
-                                  <p className="text-sm text-gray-300">{answer.behavioralFeedback.eyeContact}</p>
+                                  <p className="text-[10px] font-medium text-[#999999] uppercase mb-1">Eye Contact</p>
+                                  <p className="text-sm text-[#666666]">{answer.behavioralFeedback.eyeContact}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Posture</p>
-                                  <p className="text-sm text-gray-300">{answer.behavioralFeedback.posture}</p>
+                                  <p className="text-[10px] font-medium text-[#999999] uppercase mb-1">Posture</p>
+                                  <p className="text-sm text-[#666666]">{answer.behavioralFeedback.posture}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Confidence</p>
-                                  <p className="text-sm text-gray-300">{answer.behavioralFeedback.confidence}</p>
+                                  <p className="text-[10px] font-medium text-[#999999] uppercase mb-1">Confidence</p>
+                                  <p className="text-sm text-[#666666]">{answer.behavioralFeedback.confidence}</p>
                                 </div>
                               </div>
-                              <div className="mt-4 pt-4 border-t border-purple-500/10">
-                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Overall Body Language</p>
-                                <p className="text-sm text-gray-400 italic">"{answer.behavioralFeedback.overall}"</p>
+                              <div className="mt-4 pt-4 border-t border-[#E5E5E5]">
+                                <p className="text-[10px] font-medium text-[#999999] uppercase mb-1">Overall Body Language</p>
+                                <p className="text-sm text-[#666666] italic">"{answer.behavioralFeedback.overall}"</p>
                               </div>
                             </div>
                           )}
@@ -374,48 +354,48 @@ export default function Results() {
 
         {/* ── Tab: Skill Radar ── */}
         {activeTab === 'skills' && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             {radarData.length < 3 ? (
-              <div className="text-center py-16 text-gray-500">
-                <TrendingUp size={48} className="mx-auto mb-4 opacity-30" />
+              <div className="text-center py-16 text-[#999999]">
+                <TrendingUp size={40} className="mx-auto mb-4 opacity-30" />
                 <p>Not enough concept data to build a radar chart yet.</p>
                 <p className="text-sm mt-1">Complete more questions with expected concepts to see this.</p>
               </div>
             ) : (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8">
-                <h2 className="text-xl font-bold mb-2">Skill Gap Radar</h2>
-                <p className="text-gray-500 text-sm mb-8">Average score per concept area across all questions. Closer to 10 = stronger.</p>
+              <div className="border border-[#E5E5E5] p-8">
+                <h2 className="text-lg font-semibold mb-2">Skill Gap Radar</h2>
+                <p className="text-[#999999] text-sm mb-8">Average score per concept area across all questions. Closer to 10 = stronger.</p>
                 <div className="h-[380px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-                      <PolarGrid stroke="#1f2937" />
+                      <PolarGrid stroke="#E5E5E5" />
                       <PolarAngleAxis
                         dataKey="concept"
-                        tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 600 }}
+                        tick={{ fill: '#666666', fontSize: 11, fontWeight: 500 }}
                       />
                       <Radar
                         name="Score"
                         dataKey="score"
-                        stroke="#8b5cf6"
-                        fill="#8b5cf6"
-                        fillOpacity={0.25}
+                        stroke="#000000"
+                        fill="#000000"
+                        fillOpacity={0.08}
                         strokeWidth={2}
                       />
                       <Tooltip
-                        contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 12 }}
-                        labelStyle={{ color: '#e5e7eb', fontWeight: 700 }}
-                        formatter={(val: number) => [`${val}/10`, 'Avg Score']}
+                        contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E5E5', borderRadius: 0 }}
+                        labelStyle={{ color: '#000000', fontWeight: 600 }}
+                        formatter={(val: any) => [`${val}/10`, 'Avg Score']}
                       />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* Legend: score buckets */}
-                <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t border-gray-800">
+                {/* Legend */}
+                <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t border-[#E5E5E5]">
                   {radarData.map(d => (
                     <div key={d.concept} className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${d.score >= 7 ? 'bg-green-400' : d.score >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} />
-                      <span className="text-xs text-gray-400">{d.concept} <span className="font-bold text-white">{d.score}</span></span>
+                      <span className={`w-2 h-2 ${d.score >= 7 ? 'bg-black' : d.score >= 4 ? 'bg-[#999999]' : 'bg-[#CCCCCC]'}`} />
+                      <span className="text-xs text-[#666666]">{d.concept} <span className="font-semibold text-black">{d.score}</span></span>
                     </div>
                   ))}
                 </div>
@@ -426,27 +406,23 @@ export default function Results() {
 
         {/* ── Tab: Study Plan ── */}
         {activeTab === 'plan' && studyPlan && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             {/* Summary */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8">
-              <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest mb-3">Assessment</p>
-              <p className="text-gray-300 leading-relaxed">{studyPlan.summary}</p>
+            <div className="border border-[#E5E5E5] p-8">
+              <p className="text-[10px] font-medium text-[#999999] uppercase tracking-widest mb-3">Assessment</p>
+              <p className="text-[#666666] leading-relaxed">{studyPlan.summary}</p>
             </div>
 
             {/* Focus Areas */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8">
-              <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+            <div className="border border-[#E5E5E5] p-8">
+              <p className="text-[10px] font-medium text-black uppercase tracking-widest mb-4 flex items-center gap-1.5">
                 <Zap size={12} /> Priority Focus Areas
               </p>
               <div className="flex flex-wrap gap-3">
                 {studyPlan.focusAreas.map((area, i) => (
                   <span
                     key={area}
-                    className={`px-4 py-2 rounded-xl text-sm font-bold border ${
-                      i === 0 ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                      : i === 1 ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                      : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
-                    }`}
+                    className="px-4 py-2 text-sm font-medium border border-[#E5E5E5] text-black bg-[#FAFAFA]"
                   >
                     #{i + 1} {area}
                   </span>
@@ -455,17 +431,17 @@ export default function Results() {
             </div>
 
             {/* 7-Day Plan */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8">
-              <p className="text-[10px] font-bold text-green-400 uppercase tracking-widest mb-6 flex items-center gap-1.5">
+            <div className="border border-[#E5E5E5] p-8">
+              <p className="text-[10px] font-medium text-black uppercase tracking-widest mb-6 flex items-center gap-1.5">
                 <BookOpen size={12} /> 7-Day Action Plan
               </p>
               <div className="space-y-3">
                 {studyPlan.dailyPlan.map((item) => (
                   <div key={item.day} className="flex items-start gap-4 group">
-                    <div className="w-8 h-8 shrink-0 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-xs font-bold text-purple-400 group-hover:bg-purple-500/20 transition-colors">
+                    <div className="w-8 h-8 shrink-0 border border-[#E5E5E5] flex items-center justify-center text-xs font-semibold text-[#999999] group-hover:border-black group-hover:text-black transition-colors">
                       {item.day}
                     </div>
-                    <p className="text-gray-300 text-sm leading-relaxed pt-1">{item.task}</p>
+                    <p className="text-[#666666] text-sm leading-relaxed pt-1">{item.task}</p>
                   </div>
                 ))}
               </div>
@@ -473,11 +449,11 @@ export default function Results() {
 
             {/* Resources */}
             {studyPlan.resources?.length > 0 && (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8">
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-4">Recommended Resources</p>
+              <div className="border border-[#E5E5E5] p-8">
+                <p className="text-[10px] font-medium text-black uppercase tracking-widest mb-4">Recommended Resources</p>
                 <div className="flex flex-wrap gap-3">
                   {studyPlan.resources.map(r => (
-                    <span key={r} className="px-3 py-2 bg-blue-500/5 border border-blue-500/20 rounded-xl text-blue-300 text-sm">{r}</span>
+                    <span key={r} className="px-3 py-2 bg-[#FAFAFA] border border-[#E5E5E5] text-[#666666] text-sm">{r}</span>
                   ))}
                 </div>
               </div>
@@ -486,19 +462,19 @@ export default function Results() {
         )}
 
         {/* Footer Actions */}
-        <div className="mt-12 flex flex-col sm:flex-row gap-4 items-center justify-center border-t border-gray-800 pt-12">
+        <div className="mt-12 flex flex-col sm:flex-row gap-4 items-center justify-center border-t border-[#E5E5E5] pt-12">
           <button
             onClick={() => navigate('/dashboard')}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-3 rounded-xl transition-all shadow-[0_0_20px_rgba(147,51,234,0.25)]"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-black hover:bg-[#222222] text-white font-medium px-8 py-3 transition-all"
           >
             Start New Interview
           </button>
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white text-black font-bold px-8 py-3 rounded-xl hover:bg-gray-200 transition-all">
-            <Download size={20} />
+          <button className="w-full sm:w-auto flex items-center justify-center gap-2 border border-[#E5E5E5] hover:border-black text-black font-medium px-8 py-3 transition-all">
+            <Download size={18} />
             Download PDF Report
           </button>
-          <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-900 border border-gray-800 text-white font-bold px-8 py-3 rounded-xl hover:bg-gray-800 transition-all">
-            <Share2 size={20} />
+          <button className="w-full sm:w-auto flex items-center justify-center gap-2 border border-[#E5E5E5] hover:border-black text-black font-medium px-8 py-3 transition-all">
+            <Share2 size={18} />
             Share Progress
           </button>
         </div>
