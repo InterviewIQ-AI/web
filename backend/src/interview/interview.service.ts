@@ -15,12 +15,18 @@ export class InterviewService {
     private readonly spacedRep: SpacedRepetitionService,
   ) {}
 
-  async createInterview(jobRole: string, firstQuestion: any, userId: string) {
+  async createInterview(
+    jobRole: string,
+    firstQuestion: any,
+    userId: string,
+    roundType: 'HR' | 'MR' | 'TR' = 'TR',
+    difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  ) {
     const sessionNumber = (await this.spacedRep.getSessionNumber(userId, jobRole)) + 1;
 
     const [interview] = await this.db
       .insert(interviews)
-      .values({ userId, jobRole, status: 'IN_PROGRESS', sessionNumber })
+      .values({ userId, jobRole, status: 'IN_PROGRESS', sessionNumber, roundType, difficulty })
       .returning();
 
     const [savedQuestion] = await this.db
@@ -54,7 +60,12 @@ export class InterviewService {
       interview.sessionNumber ?? 1,
     );
 
-    const { question: nextQ } = await this.aiService.generateFollowUpOrNext(interview.jobRole, history, hints);
+    const roundType = (interview.roundType ?? 'TR') as 'HR' | 'MR' | 'TR';
+    const difficulty = (interview.difficulty ?? 'medium') as 'easy' | 'medium' | 'hard';
+
+    const { question: nextQ } = await this.aiService.generateFollowUpOrNext(
+      interview.jobRole, history, hints, roundType, difficulty,
+    );
 
     const [savedQuestion] = await this.db
       .insert(questions)
@@ -118,10 +129,17 @@ export class InterviewService {
     );
 
     // Parallel: evaluate answer + pre-fetch next/follow-up question
+    const roundType = (interview?.roundType ?? 'TR') as 'HR' | 'MR' | 'TR';
+    const difficulty = (interview?.difficulty ?? 'medium') as 'easy' | 'medium' | 'hard';
+
     const [evaluation, followUpResult] = await Promise.all([
       this.aiService.evaluateAnswer(question.questionText, expectedConcepts, userAnswer, snapshots),
       history && interview
-        ? this.aiService.generateFollowUpOrNext(interview.jobRole, history, hints)
+        ? this.aiService.generateFollowUpOrNext(interview.jobRole, history, hints, roundType, difficulty)
+            .catch((e) => {
+              this.logger.warn(`Next question generation failed: ${e.message}`);
+              return null;
+            })
         : Promise.resolve(null),
     ]);
 

@@ -87,7 +87,13 @@ export default function Navbar() {
             className="flex items-center gap-2 border border-[#E5E5E5] hover:border-[#CCCCCC] px-3 py-2 transition-all"
           >
             {user.photoURL ? (
-              <img src={user.photoURL} alt="avatar" className="w-7 h-7 rounded-full object-cover" />
+              <img
+                src={user.photoURL}
+                alt="avatar"
+                referrerPolicy="no-referrer"
+                className="w-7 h-7 rounded-full object-cover"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
             ) : (
               <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-white text-xs font-semibold">
                 {initials}

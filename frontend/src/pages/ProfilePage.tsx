@@ -277,7 +277,13 @@ export default function ProfilePage() {
           <div className="avatar-wrapper">
             <div className="avatar-ring">
               {user?.photoURL ? (
-                <img src={user.photoURL} alt="avatar" className="avatar-img" />
+                <img
+                  src={user.photoURL}
+                  alt="avatar"
+                  referrerPolicy="no-referrer"
+                  className="avatar-img"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
               ) : (
                 <div className="avatar-initials">{initials}</div>
               )}

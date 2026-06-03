@@ -30,21 +30,25 @@ export class InterviewController {
 
   /**
    * POST /interview/start
-   * Body: { jobRole: string }
+   * Body: { jobRole: string, roundType?: 'HR'|'MR'|'TR', difficulty?: 'easy'|'medium'|'hard' }
    */
   @Post('start')
   async startInterview(
     @Body('jobRole') jobRole: string,
+    @Body('roundType') roundType: 'HR' | 'MR' | 'TR' = 'TR',
+    @Body('difficulty') difficulty: 'easy' | 'medium' | 'hard' = 'medium',
     @CurrentUser() authUser: AuthUser,
   ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
 
     const userId = await this.resolveUserId(authUser);
-    const firstQuestion = await this.aiService.generateQuestionsForRole(jobRole);
-    const { interview, question } = await this.interviewService.createInterview(jobRole, firstQuestion, userId);
+    const firstQuestion = await this.aiService.generateQuestionsForRole(jobRole, roundType, difficulty);
+    const { interview, question } = await this.interviewService.createInterview(
+      jobRole, firstQuestion, userId, roundType, difficulty,
+    );
 
     const totalQuestions = Math.floor(Math.random() * 11) + 10;
-    return { interviewId: interview.id, question, totalQuestions };
+    return { interviewId: interview.id, question, totalQuestions, roundType, difficulty };
   }
 
   /** GET /interview — list only this user's interviews */
@@ -72,14 +76,18 @@ export class InterviewController {
   async createInterview(
     @Body('jobRole') jobRole: string,
     @Body('question') firstQuestion: any,
+    @Body('roundType') roundType: 'HR' | 'MR' | 'TR' = 'TR',
+    @Body('difficulty') difficulty: 'easy' | 'medium' | 'hard' = 'medium',
     @CurrentUser() authUser: AuthUser,
   ) {
     if (!jobRole) throw new BadRequestException('jobRole is required');
     if (!firstQuestion) throw new BadRequestException('question object is required');
 
     const userId = await this.resolveUserId(authUser);
-    const result = await this.interviewService.createInterview(jobRole, firstQuestion, userId);
-    return { ...result, totalQuestions: Math.floor(Math.random() * 11) + 10 };
+    const result = await this.interviewService.createInterview(
+      jobRole, firstQuestion, userId, roundType, difficulty,
+    );
+    return { ...result, totalQuestions: Math.floor(Math.random() * 11) + 10, roundType, difficulty };
   }
 
   /**

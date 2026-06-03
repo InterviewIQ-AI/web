@@ -6,6 +6,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+type RoundType = 'HR' | 'MR' | 'TR';
+type Difficulty = 'easy' | 'medium' | 'hard';
+
 @Injectable()
 export class AiService {
   private genAI: GoogleGenerativeAI;
@@ -21,6 +24,101 @@ export class AiService {
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey || '');
+  }
+
+  // ─── Round & Difficulty Helpers ────────────────────────────────────────────
+
+  private getRoundProfile(roundType: RoundType): {
+    label: string;
+    focusAreas: string;
+    categoryBias: string;
+    avoidList: string;
+  } {
+    switch (roundType) {
+      case 'HR':
+        return {
+          label: 'HR (Human Resources) Round',
+          focusAreas: `
+            - Personal background, motivations, and career story
+            - Cultural fit, values alignment, and teamwork mindset
+            - Situational / behavioural scenarios (conflict, failure, achievement)
+            - Communication style, adaptability, and interpersonal skills
+            - Why this company, why this role, career goals and aspirations
+            - Work-life balance, salary expectations, notice period (contextually)`,
+          categoryBias: 'ALL questions must have category: "BEHAVIORAL"',
+          avoidList: 'Do NOT ask about technical concepts, algorithms, system design, or any domain-specific knowledge.',
+        };
+      case 'MR':
+        return {
+          label: 'Managerial / Leadership Round',
+          focusAreas: `
+            - Leadership experience, team management, and mentoring
+            - Stakeholder communication and cross-team collaboration
+            - Project ownership, planning, and delivery under constraints
+            - Conflict resolution, decision-making under ambiguity
+            - Driving results through others, performance management
+            - Strategic thinking, prioritisation, and trade-off analysis
+            - Technical credibility — ability to guide technical teams without being hands-on`,
+          categoryBias: 'Mostly BEHAVIORAL (70%). TECHNICAL questions (30%) must focus on architecture trade-offs, technical strategy, and decision rationale — NOT implementation.',
+          avoidList: 'Do NOT ask about specific algorithms, data structures, or implementation-level code. Focus on how to lead and decide, not how to implement.',
+        };
+      case 'TR':
+      default:
+        return {
+          label: 'Technical Round',
+          focusAreas: `
+            - Core technical concepts relevant to the role (e.g. data structures, algorithms, OOP, system design)
+            - Problem-solving approach: ask the candidate to EXPLAIN or DESCRIBE solutions verbally
+            - Architecture, design patterns, scalability considerations
+            - Domain-specific knowledge (databases, APIs, frameworks, cloud, etc.)
+            - Debugging mindset: describe how you would identify and solve a problem
+            - Trade-offs between different technical approaches
+            - Past technical projects and key engineering decisions made`,
+          categoryBias: 'Mostly TECHNICAL (75%). BEHAVIORAL (25%) for project-based or experience questions.',
+          avoidList: `CRITICAL — This is a VOICE interview. You MUST NEVER ask the candidate to:
+            - Write code, write a function, or implement anything
+            - Draw a diagram or produce any visual output
+            - Fill in syntax or complete a code snippet
+            Instead, ask them to EXPLAIN, DESCRIBE, WALK THROUGH, or DISCUSS concepts verbally.
+            Examples of CORRECT TR questions:
+              ✓ "Explain how a hash map works and when you would use one."
+              ✓ "Walk me through how you would design a URL shortener at scale."
+              ✓ "Describe the difference between SQL and NoSQL databases."
+              ✓ "How would you approach debugging a memory leak in a production service?"
+            Examples of WRONG TR questions (never generate these):
+              ✗ "Write a function to reverse a linked list."
+              ✗ "Code a binary search algorithm."
+              ✗ "Implement a queue using two stacks."`,
+        };
+    }
+  }
+
+  private getDifficultyProfile(difficulty: Difficulty): {
+    label: string;
+    guideline: string;
+    difficultyRange: string;
+  } {
+    switch (difficulty) {
+      case 'easy':
+        return {
+          label: 'Junior / Entry-Level',
+          guideline: 'Target a candidate with 0–2 years of experience. Questions should cover foundational concepts, basic terminology, and simple real-world scenarios. Avoid advanced or niche topics.',
+          difficultyRange: '1 or 2',
+        };
+      case 'hard':
+        return {
+          label: 'Senior / Expert Level',
+          guideline: 'Target a candidate with 6+ years of experience. Questions should probe deep expertise, advanced trade-offs, edge cases, and complex system-level thinking. Expect nuanced, multi-faceted answers.',
+          difficultyRange: '4 or 5',
+        };
+      case 'medium':
+      default:
+        return {
+          label: 'Mid-Level',
+          guideline: 'Target a candidate with 2–5 years of experience. Questions should balance conceptual understanding with practical application. Expect solid answers with some depth.',
+          difficultyRange: '3',
+        };
+    }
   }
 
   /** Maps raw API/SDK errors to concise, user-friendly messages. */
@@ -89,9 +187,7 @@ export class AiService {
   private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
     const modelsToTry = [
       'gemini-2.0-flash',
-      'gemini-flash-latest',
       'gemini-2.5-flash',
-      'gemini-2.5-pro',
     ];
     let lastError: any = null;
 
@@ -134,32 +230,54 @@ export class AiService {
     throw new InternalServerErrorException(this.getFriendlyErrorMessage(lastError));
   }
 
-  async generateQuestionsForRole(jobRole: string): Promise<any> {
+  // ─── Question Generation ───────────────────────────────────────────────────
+
+  async generateQuestionsForRole(
+    jobRole: string,
+    roundType: RoundType = 'TR',
+    difficulty: Difficulty = 'medium',
+  ): Promise<any> {
+    const round = this.getRoundProfile(roundType);
+    const diff = this.getDifficultyProfile(difficulty);
+
     const prompt = `
-      You are an expert technical interviewer conducting an interview for the role: "${jobRole}".
+      You are a highly experienced interviewer conducting the OPENING question of a structured interview.
 
-      A realistic interview flows through these progressive phases:
-      1. Introduction & Background (BEHAVIORAL)
-      2. Career Objectives & Education (BEHAVIORAL)
-      3. Projects & Past Experience (BEHAVIORAL or TECHNICAL)
-      4. Deep Technical Knowledge — core focus (TECHNICAL)
-      5. Situational & Managerial Scenarios (BEHAVIORAL)
-      6. Achievements & Wrap-up (BEHAVIORAL)
+      ═══ INTERVIEW CONTEXT ═══
+      Role Applied For : "${jobRole}"
+      Round Type       : ${round.label}
+      Difficulty Level : ${diff.label}
 
-      Generate the very FIRST interview question. It MUST be an introduction question
-      (e.g., "Please introduce yourself and walk me through your background.").
-      CRITICAL RULES:
-      - Keep the question STRICTLY under 15 words.
-      - The "category" field MUST be exactly one of the two string literals: "TECHNICAL" or "BEHAVIORAL".
-      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any other value — this will cause a fatal DB constraint violation.
-      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
+      ═══ ROUND FOCUS AREAS ═══
+      ${round.focusAreas}
 
-      Return a single JSON object (not an array) with this exact schema:
+      ═══ DIFFICULTY GUIDELINE ═══
+      ${diff.guideline}
+      The "difficulty" field in your output MUST be ${diff.difficultyRange}.
+
+      ═══ CATEGORY RULE ═══
+      ${round.categoryBias}
+      The "category" field MUST be EXACTLY one of: "TECHNICAL" or "BEHAVIORAL".
+      Do NOT use "HR", "MR", "TR", "SYSTEM_DESIGN", or any other value — this will cause a fatal DB constraint violation.
+
+      ═══ RESTRICTIONS ═══
+      ${round.avoidList}
+
+      ═══ OPENING QUESTION RULES ═══
+      The FIRST question of ANY interview MUST be an introduction/ice-breaker question.
+      It should warmly invite the candidate to introduce themselves and set the stage.
+      Examples:
+        - "Please introduce yourself and walk me through your background."
+        - "Tell me about yourself and what brought you to apply for this role."
+      Keep it under 20 words. Friendly and open-ended.
+
+      ═══ OUTPUT FORMAT ═══
+      Return ONLY a raw JSON object. No markdown, no code fences, no explanation.
       {
-        "questionText": "string",
+        "questionText": "string — the opening interview question",
         "category": "BEHAVIORAL",
-        "expectedConcepts": ["string"],
-        "difficulty": number (1-5)
+        "expectedConcepts": ["string — what a strong answer should cover"],
+        "difficulty": <integer matching the difficulty range above>
       }
     `;
     return this.generateWithFallback(prompt);
@@ -169,56 +287,98 @@ export class AiService {
     jobRole: string,
     history: Array<{ question: string; answer: string }>,
     hints?: { suppressedConcepts: string[]; drillConcepts: string[] },
+    roundType: RoundType = 'TR',
+    difficulty: Difficulty = 'medium',
   ): Promise<any> {
+    const round = this.getRoundProfile(roundType);
+    const diff = this.getDifficultyProfile(difficulty);
+
     const historyText = history
       .map((h, i) => `Q${i + 1}: ${h.question}\nA${i + 1}: ${h.answer}`)
       .join('\n\n');
 
     const suppressionBlock = hints?.suppressedConcepts?.length
-      ? `SUPPRESSED CONCEPTS (candidate has mastered these — do NOT ask about them again for now): ${hints.suppressedConcepts.join(', ')}`
+      ? `SUPPRESSED TOPICS (candidate has demonstrated strong knowledge here — avoid repeating these): ${hints.suppressedConcepts.join(', ')}`
       : '';
 
     const drillBlock = hints?.drillConcepts?.length
-      ? `DRILL CONCEPTS (candidate struggled with these — prioritise questions that revisit them): ${hints.drillConcepts.join(', ')}`
+      ? `DRILL TOPICS (candidate struggled with these — generate a question that revisits one of them from a slightly different angle): ${hints.drillConcepts.join(', ')}`
       : '';
 
+    const phaseGuidance = this.getPhaseGuidance(roundType, history.length);
+
     const prompt = `
-      You are an expert interviewer conducting an interview for the role: "${jobRole}".
+      You are a highly experienced interviewer conducting a structured, progressive interview.
 
-      A realistic interview flows through these progressive phases:
-      1. Introduction & Background (BEHAVIORAL)
-      2. Career Objectives & Education (BEHAVIORAL)
-      3. Projects & Past Experience (BEHAVIORAL or TECHNICAL)
-      4. Deep Technical Knowledge — core focus (TECHNICAL)
-      5. Situational & Managerial Scenarios (BEHAVIORAL)
-      6. Achievements & Wrap-up (BEHAVIORAL)
+      ═══ INTERVIEW CONTEXT ═══
+      Role Applied For : "${jobRole}"
+      Round Type       : ${round.label}
+      Difficulty Level : ${diff.label}
+      Questions Asked  : ${history.length}
 
-      Previous conversation history:
-      ${historyText}
+      ═══ ROUND FOCUS AREAS ═══
+      ${round.focusAreas}
+
+      ═══ DIFFICULTY GUIDELINE ═══
+      ${diff.guideline}
+      The "difficulty" field in your output MUST be ${diff.difficultyRange}.
+
+      ═══ CATEGORY RULE ═══
+      ${round.categoryBias}
+      The "category" field MUST be EXACTLY one of: "TECHNICAL" or "BEHAVIORAL".
+      Do NOT use "HR", "MR", "TR", or any other value.
+
+      ═══ RESTRICTIONS ═══
+      ${round.avoidList}
+
+      ═══ INTERVIEW PHASE GUIDANCE ═══
+      ${phaseGuidance}
+
+      ═══ CONVERSATION HISTORY ═══
+      ${historyText || 'No history yet — this is the first question.'}
 
       ${suppressionBlock}
       ${drillBlock}
 
-      Based on the history, determine the current phase and generate the NEXT most relevant question.
-      CRITICAL RULES:
-      - Progress naturally through phases. Do not jump to technical before background is established.
-      - Spend the majority of the interview on phases 4 and 5.
-      - Build on the candidate's previous answers for a conversational flow.
-      - Respect the SUPPRESSED and DRILL concept lists above when choosing the question topic.
-      - The "category" field MUST be EXACTLY one of these two string literals: "TECHNICAL" or "BEHAVIORAL".
-      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any variant — this will cause a fatal DB constraint violation.
-      - PROGRESSIVE LENGTH: If history length <= 3, keep the question STRICTLY under 15 words. Otherwise, use detailed situational syntax.
-      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
+      ═══ QUESTION GENERATION RULES ═══
+      1. Study the conversation history carefully. Do NOT repeat a topic already covered well.
+      2. Build on the candidate's previous answers — reference what they said to make the flow conversational.
+      3. Progress naturally through interview phases. Do not jump to advanced topics before basics are established.
+      4. If the candidate gave a weak or vague answer, probe deeper on that topic before moving on.
+      5. If history length > 5, questions can be longer and more nuanced/situational.
+      6. Each question should feel like it comes from a real human interviewer — natural, purposeful, and contextual.
+      7. Respect suppressed and drill lists above.
 
-      Return a single JSON object (not an array):
+      ═══ OUTPUT FORMAT ═══
+      Return ONLY a raw JSON object. No markdown, no code fences, no explanation.
       {
-        "questionText": "string",
+        "questionText": "string — the next interview question",
         "category": "TECHNICAL" | "BEHAVIORAL",
-        "expectedConcepts": ["string"],
-        "difficulty": <integer from 1 to 5>
+        "expectedConcepts": ["string — key points a strong answer should cover"],
+        "difficulty": <integer matching the difficulty range above>
       }
     `;
     return this.generateWithFallback(prompt);
+  }
+
+  private getPhaseGuidance(roundType: RoundType, historyLength: number): string {
+    if (roundType === 'HR') {
+      if (historyLength <= 1) return 'Phase: Introduction. Ask about background and motivation.';
+      if (historyLength <= 3) return 'Phase: Career Story. Explore past roles, achievements, transitions.';
+      if (historyLength <= 6) return 'Phase: Behavioural Scenarios. Use STAR-based situational questions (conflict, failure, success).';
+      return 'Phase: Cultural Fit & Closing. Explore values, team preferences, and future goals.';
+    }
+    if (roundType === 'MR') {
+      if (historyLength <= 1) return 'Phase: Introduction. Ask about their leadership background and team context.';
+      if (historyLength <= 3) return 'Phase: Leadership Experience. Explore team management, mentoring, and cross-team work.';
+      if (historyLength <= 6) return 'Phase: Situational Leadership. Complex scenarios involving conflict, ambiguity, and strategic decisions.';
+      return 'Phase: Strategic & Closing. Explore vision, long-term thinking, and lessons learned as a leader.';
+    }
+    // TR
+    if (historyLength <= 1) return 'Phase: Introduction. Ask about their technical background, key projects, and primary tech stack.';
+    if (historyLength <= 3) return 'Phase: Core Concepts. Probe foundational knowledge relevant to the role. Ask them to explain core concepts verbally.';
+    if (historyLength <= 6) return 'Phase: Deep Technical. Advanced conceptual questions — architecture decisions, trade-offs, design thinking. No coding.';
+    return 'Phase: Applied Experience. Project-based questions — real challenges they solved and how they approached them.';
   }
 
   /**
@@ -229,9 +389,11 @@ export class AiService {
     jobRole: string,
     history: Array<{ question: string; answer: string }>,
     hints?: { suppressedConcepts: string[]; drillConcepts: string[] },
+    roundType: RoundType = 'TR',
+    difficulty: Difficulty = 'medium',
   ): Promise<{ type: 'FOLLOWUP' | 'NEXT'; question: any }> {
     if (!history.length) {
-      const question = await this.generateNextQuestion(jobRole, history, hints);
+      const question = await this.generateNextQuestion(jobRole, history, hints, roundType, difficulty);
       return { type: 'NEXT', question };
     }
 
@@ -248,35 +410,50 @@ export class AiService {
     const hasUncertainty = uncertaintyPhrases.some(phrase => lastAnswer.includes(phrase));
 
     if (hasUncertainty) {
+      const round = this.getRoundProfile(roundType);
+      const diff = this.getDifficultyProfile(difficulty);
+
       const prompt = `
         You are an expert interviewer for the role: "${jobRole}".
 
-        The candidate answered the following question with uncertainty:
-        Question: ${lastEntry.question}
-        Candidate's answer: "${lastEntry.answer}"
+        ═══ INTERVIEW CONTEXT ═══
+        Round Type       : ${round.label}
+        Difficulty Level : ${diff.label}
 
-        Generate a SHORT, SUPPORTIVE follow-up probe question that:
-        - Helps the candidate think through what they DO know about the concept
-        - Breaks the concept into a simpler sub-part they might be able to answer
-        - Is NOT a new topic — stays within the same concept area
-        CRITICAL RULES:
-        - The "category" field MUST be exactly one of: "TECHNICAL" or "BEHAVIORAL".
-        - Keep the question under 20 words.
-        - Return RAW JSON only. No markdown fences.
+        ═══ SITUATION ═══
+        The candidate showed uncertainty on the following question:
+        Question : ${lastEntry.question}
+        Answer   : "${lastEntry.answer}"
 
-        Return a single JSON object:
+        ═══ YOUR TASK ═══
+        Generate a SHORT, SUPPORTIVE follow-up probe that:
+        - Gently helps the candidate think through what they DO know
+        - Breaks the concept into a simpler sub-question they might be able to answer
+        - Stays within the SAME topic/concept — do NOT introduce a new topic
+        - Is encouraging in tone — e.g. "Let's approach it differently..." or "How about this angle..."
+
+        ═══ RESTRICTIONS ═══
+        ${round.avoidList}
+        Keep the question under 25 words.
+
+        ═══ CATEGORY RULE ═══
+        ${round.categoryBias}
+        The "category" field MUST be EXACTLY "TECHNICAL" or "BEHAVIORAL".
+
+        ═══ OUTPUT FORMAT ═══
+        Return ONLY raw JSON. No markdown, no fences.
         {
           "questionText": "string",
           "category": "TECHNICAL" | "BEHAVIORAL",
           "expectedConcepts": ["string"],
-          "difficulty": <integer 1-5>
+          "difficulty": <integer ${diff.difficultyRange}>
         }
       `;
       const question = await this.generateWithFallback(prompt);
       return { type: 'FOLLOWUP', question };
     }
 
-    const question = await this.generateNextQuestion(jobRole, history, hints);
+    const question = await this.generateNextQuestion(jobRole, history, hints, roundType, difficulty);
     return { type: 'NEXT', question };
   }
 
@@ -352,34 +529,54 @@ export class AiService {
   async generateQuestionsFromResume(
     resumeText: string,
     jobRole: string,
+    roundType: RoundType = 'TR',
+    difficulty: Difficulty = 'medium',
     jobDescription?: string,
   ): Promise<any> {
+    const round = this.getRoundProfile(roundType);
+    const diff = this.getDifficultyProfile(difficulty);
     const jdSection = jobDescription
       ? `Target Job Description:\n${jobDescription}\n`
       : '';
 
     const prompt = `
-      You are an expert technical interviewer. Based on the following resume and the target role "${jobRole}",
-      ${jdSection}
-      generate the very FIRST interview question.
-      It must be an introduction question that asks the candidate to introduce themselves
-      while highlighting a key aspect of their resume relevant to the role (and job description if provided).
-      CRITICAL RULES:
-      - Keep the question STRICTLY under 15 words.
-      - The "category" field MUST be exactly one of the two string literals: "TECHNICAL" or "BEHAVIORAL".
-      - Do NOT use "HR", "MR", "SYSTEM_DESIGN", or any other value — this will cause a fatal DB constraint violation.
-      - Return RAW JSON only. Do NOT wrap in markdown code blocks.
+      You are a highly experienced interviewer. You have been given a candidate's resume and are preparing the OPENING question of a structured interview.
 
-      Return a single JSON object (not an array):
+      ═══ INTERVIEW CONTEXT ═══
+      Role Applied For : "${jobRole}"
+      Round Type       : ${round.label}
+      Difficulty Level : ${diff.label}
+      ${jdSection}
+
+      ═══ CANDIDATE RESUME ═══
+      ${resumeText.slice(0, 3500)}
+
+      ═══ YOUR TASK ═══
+      Generate the VERY FIRST question — an introduction/ice-breaker that:
+      - Asks the candidate to introduce themselves
+      - References a specific aspect of their resume that is relevant to the role
+      - Sets a warm, professional tone for the interview
+      - Is under 25 words
+
+      ═══ ROUND FOCUS ═══
+      ${round.focusAreas}
+
+      ═══ RESTRICTIONS ═══
+      ${round.avoidList}
+
+      ═══ CATEGORY RULE ═══
+      ${round.categoryBias}
+      The "category" field MUST be EXACTLY "TECHNICAL" or "BEHAVIORAL".
+      Do NOT use "HR", "MR", "TR", or any other value.
+
+      ═══ OUTPUT FORMAT ═══
+      Return ONLY raw JSON. No markdown, no fences.
       {
         "questionText": "string",
         "category": "BEHAVIORAL",
         "expectedConcepts": ["string"],
-        "difficulty": number (1-5)
+        "difficulty": <integer ${diff.difficultyRange}>
       }
-
-      Resume text:
-      ${resumeText}
     `;
     return this.generateWithFallback(prompt);
   }
@@ -391,60 +588,95 @@ export class AiService {
     snapshots?: string[],
   ): Promise<any> {
     const prompt = `
-      You are an expert interviewer evaluating a candidate's answer.
+      You are an expert interview evaluator. Your job is to fairly and thoroughly assess the candidate's answer.
 
-      [CONTENT EVALUATION]
-      Question: ${question}
-      Candidate's Answer: ${answer}
-      Expected Concepts: ${expectedConcepts.join(', ')}
+      ═══ QUESTION ═══
+      ${question}
 
-      [BEHAVIORAL EVALUATION]
-      Attached are webcam snapshots of the candidate taken during this answer.
-      Evaluate their Eye Contact, Posture, and Confidence/Expressions based on the images.
+      ═══ EXPECTED KEY CONCEPTS ═══
+      ${expectedConcepts.join(', ')}
 
-      [CRITICAL OUTPUT RULES]
+      ═══ CANDIDATE'S ANSWER ═══
+      ${answer}
+
+      ═══ EVALUATION CRITERIA ═══
+      Score the answer on a scale of 0–10 based on:
+      - Accuracy and correctness of the information provided (40%)
+      - Coverage of expected key concepts (30%)
+      - Clarity of communication and structure (20%)
+      - Depth and quality of insight shown (10%)
+
+      Scoring guide:
+      9-10 : Exceptional — covers all concepts with depth, clear and insightful
+       7-8 : Strong — covers most concepts, clear and accurate
+       5-6 : Adequate — covers some concepts, may have gaps or minor inaccuracies
+       3-4 : Weak — misses key concepts or has significant inaccuracies
+       0-2 : Poor — off-topic, blank, or fundamentally wrong
+
+      ═══ BEHAVIOURAL EVALUATION ═══
+      Webcam snapshots of the candidate during this answer are attached (if any).
+      Evaluate: Eye Contact quality, Posture, and Confidence based on visual cues.
+
+      ═══ CRITICAL OUTPUT RULES ═══
       - Return RAW JSON only. Do NOT wrap in markdown code blocks (no triple backticks).
       - The response MUST start with '{' and end with '}' — no leading or trailing text.
-      - "feedback" MUST be bounded to a MAXIMUM of 2 sentences.
+      - "feedback" MUST be bounded to a MAXIMUM of 2 sentences. Be specific and constructive.
+      - "idealAnswer" MUST be a concise model answer of 2–4 sentences covering all key expected concepts.
       - "eyeContact" MUST start with exactly one of: "Excellent", "Good", or "Poor" — followed by " - " and one justification sentence.
-      - "idealAnswer" MUST be a concise model answer of 2–4 sentences covering the key expected concepts.
+      - If no snapshots are provided, set behavioural fields to neutral defaults.
 
       Return this exact JSON schema:
       {
         "score": <integer from 0 to 10>,
-        "feedback": "Max 2 sentences evaluating content clarity.",
+        "feedback": "Max 2 sentences evaluating content clarity and accuracy.",
         "idealAnswer": "2-4 sentence model answer covering all key expected concepts.",
-        "missingConcepts": ["string"],
+        "missingConcepts": ["concept that was expected but not mentioned"],
         "behavioralFeedback": {
           "eyeContact": "Excellent | Good | Poor - one sentence justification.",
           "posture": "Concise physical orientation description.",
-          "confidence": "Expression assessment string.",
-          "overall": "One summary sentence."
+          "confidence": "Expression and delivery assessment.",
+          "overall": "One summary sentence of overall presence."
         }
       }
     `;
 
     if (snapshots && snapshots.length > 0) {
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-      const imageParts = snapshots.map(s => ({
-        inlineData: {
-          data: s.split(',')[1],
-          mimeType: s.split(',')[0].split(':')[1].split(';')[0],
-        },
-      }));
-
-      const result = await model.generateContent([prompt, ...imageParts]);
-      const response = await result.response;
-      const rawText = response.text();
-      const parsed = this.tryParseJson(rawText);
-      if (parsed) return parsed;
-
-      this.logger.warn('Multimodal parse failed, falling back to text-only evaluation');
-      return this.generateWithFallback(prompt);
+      try {
+        const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const imageParts = snapshots.map(s => ({
+          inlineData: {
+            data: s.split(',')[1],
+            mimeType: s.split(',')[0].split(':')[1].split(';')[0],
+          },
+        }));
+        const result = await model.generateContent([prompt, ...imageParts]);
+        const response = await result.response;
+        const parsed = this.tryParseJson(response.text());
+        if (parsed) return parsed;
+        this.logger.warn('Multimodal parse failed, falling back to text-only evaluation');
+      } catch (e: any) {
+        this.logger.warn(`Multimodal evaluation failed: ${e.message}. Falling back to text-only.`);
+      }
     }
 
-    return this.generateWithFallback(prompt);
+    try {
+      return await this.generateWithFallback(prompt);
+    } catch (e: any) {
+      // Return a safe default evaluation rather than crashing the interview
+      this.logger.error(`evaluateAnswer completely failed: ${e.message}. Returning default evaluation.`);
+      return {
+        score: 5,
+        feedback: 'Evaluation service is temporarily unavailable. Your answer has been saved.',
+        idealAnswer: 'Not available at this time.',
+        missingConcepts: [],
+        behavioralFeedback: {
+          eyeContact: 'Good - could not evaluate from snapshots.',
+          posture: 'Unable to assess.',
+          confidence: 'Unable to assess.',
+          overall: 'Evaluation service was unavailable for this answer.',
+        },
+      };
+    }
   }
 
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {

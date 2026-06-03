@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Home from './pages/Home';
 import InterviewRoom from './pages/InterviewRoom';
@@ -11,6 +11,9 @@ import ProfileSetup from './pages/ProfileSetup';
 import ProfilePage from './pages/ProfilePage';
 import Navbar from './components/Navbar';
 import { Loader2 } from 'lucide-react';
+
+// Routes where we hide the Navbar and top padding (full-screen pages)
+const FULLSCREEN_ROUTES = ['/interview'];
 
 function FullPageSpinner() {
   return (
@@ -50,38 +53,47 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
+function AppShell() {
+  const location = useLocation();
+  const isFullscreen = FULLSCREEN_ROUTES.some(r => location.pathname.startsWith(r));
+
+  return (
+    <div className="min-h-screen bg-white text-black" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {!isFullscreen && <Navbar />}
+      <div className={!isFullscreen ? 'pt-16' : ''}>
+        <Routes>
+          {/* ── Public ─────────────────────────────────────────────── */}
+          <Route path="/" element={<Home />} />
+          <Route path="/sign-in" element={<SignInPage />} />
+          <Route path="/sign-up" element={<SignUpPage />} />
+
+          {/* ── Auth required, profile NOT required ────────────────── */}
+          <Route
+            path="/profile-setup"
+            element={
+              <ProtectedRoute requireProfile={false}>
+                <ProfileSetup />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Auth + completed profile required ──────────────────── */}
+          <Route path="/dashboard"    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/interview/:id" element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
+          <Route path="/interview"    element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
+          <Route path="/results/:id"  element={<ProtectedRoute><Results /></ProtectedRoute>} />
+          <Route path="/history"      element={<ProtectedRoute><History /></ProtectedRoute>} />
+          <Route path="/profile"      element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        </Routes>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-white text-black" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-        <Navbar />
-        <div className="pt-16">
-          <Routes>
-            {/* ── Public ─────────────────────────────────────────────── */}
-            <Route path="/" element={<Home />} />
-            <Route path="/sign-in" element={<SignInPage />} />
-            <Route path="/sign-up" element={<SignUpPage />} />
-
-            {/* ── Auth required, profile NOT required ────────────────── */}
-            <Route
-              path="/profile-setup"
-              element={
-                <ProtectedRoute requireProfile={false}>
-                  <ProfileSetup />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* ── Auth + completed profile required ──────────────────── */}
-            <Route path="/dashboard"    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/interview/:id" element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
-            <Route path="/interview"    element={<ProtectedRoute><InterviewRoom /></ProtectedRoute>} />
-            <Route path="/results/:id"  element={<ProtectedRoute><Results /></ProtectedRoute>} />
-            <Route path="/history"      element={<ProtectedRoute><History /></ProtectedRoute>} />
-            <Route path="/profile"      element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          </Routes>
-        </div>
-      </div>
+      <AppShell />
     </Router>
   );
 }

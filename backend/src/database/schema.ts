@@ -33,6 +33,8 @@ export const interviews = pgTable('interviews', {
   jobRole: text('job_role').notNull(),
   status: text('status').default('PENDING'), // PENDING, IN_PROGRESS, COMPLETED
   sessionNumber: integer('session_number').default(1), // per user+role, used for spaced repetition
+  roundType: text('round_type').default('TR'),         // HR | MR | TR
+  difficulty: text('difficulty').default('medium'),    // easy | medium | hard
   finalScore: integer('final_score'),
   feedbackSummary: text('feedback_summary'),
   studyPlan: jsonb('study_plan'), // AI-generated 7-day study plan

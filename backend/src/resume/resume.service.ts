@@ -38,7 +38,7 @@ export class ResumeService {
     }
 
     this.logger.log(`Extracted ${resumeText.length} characters from resume.`);
-    return this.processResumeText(resumeText, jobRole, userId, jobDescription);
+    return this.processResumeText(resumeText, jobRole, userId, 'TR', 'medium', jobDescription);
   }
 
   /** Start an interview directly from pre-stored resume text (no PDF upload needed). */
@@ -46,16 +46,20 @@ export class ResumeService {
     resumeText: string,
     jobRole: string,
     userId: string,
+    roundType: 'HR' | 'MR' | 'TR' = 'TR',
+    difficulty: 'easy' | 'medium' | 'hard' = 'medium',
     jobDescription?: string,
   ) {
     const firstQuestion = await this.aiService.generateQuestionsFromResume(
       resumeText,
       jobRole,
+      roundType,
+      difficulty,
       jobDescription,
     );
 
     const { interview, question: savedQuestion } =
-      await this.interviewService.createInterview(jobRole, firstQuestion, userId);
+      await this.interviewService.createInterview(jobRole, firstQuestion, userId, roundType, difficulty);
 
     this.logger.log(
       `Created interview #${interview.id} with first question #${savedQuestion.id}.`,
@@ -66,6 +70,8 @@ export class ResumeService {
       interviewId: interview.id,
       question: savedQuestion,
       totalQuestions: Math.floor(Math.random() * 11) + 10,
+      roundType,
+      difficulty,
     };
   }
 }

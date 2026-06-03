@@ -69,11 +69,12 @@ export class ResumeController {
   /**
    * POST /resume/start-from-profile
    * Starts an interview using the resume text already stored in the user's profile.
-   * No file upload needed — the user uploaded their resume once via the Profile page.
    */
   @Post('start-from-profile')
   async startFromProfile(
     @Body('jobRole') jobRole: string,
+    @Body('roundType') roundType: 'HR' | 'MR' | 'TR' = 'TR',
+    @Body('difficulty') difficulty: 'easy' | 'medium' | 'hard' = 'medium',
     @Body('jobDescription') jobDescription: string | undefined,
     @CurrentUser() authUser: AuthUser,
   ) {
@@ -93,6 +94,8 @@ export class ResumeController {
       resumeText,
       jobRole.trim(),
       dbUser.id,
+      roundType,
+      difficulty,
       jobDescription?.trim(),
     );
   }
