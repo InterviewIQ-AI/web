@@ -129,6 +129,26 @@ export class InterviewController {
   }
 
   /**
+   * POST /interview/evaluate
+   * Body: { targetRole: string, questionAsked: string, userAnswer: string }
+   *
+   * InterviewIQ Core Engine — strict, role-aware, seniority-scaled evaluator.
+   * Returns: { score, technicalAccuracy, missingKeywords, actionableFeedback }
+   */
+  @Post('evaluate')
+  async evaluateAnswer(
+    @Body('targetRole') targetRole: string,
+    @Body('questionAsked') questionAsked: string,
+    @Body('userAnswer') userAnswer: string,
+  ) {
+    if (!targetRole) throw new BadRequestException('targetRole is required');
+    if (!questionAsked) throw new BadRequestException('questionAsked is required');
+    if (!userAnswer) throw new BadRequestException('userAnswer is required');
+
+    return this.aiService.evaluateAnswerV2(targetRole, questionAsked, userAnswer);
+  }
+
+  /**
    * POST /interview/:id/complete
    */
   @Post(':id/complete')
