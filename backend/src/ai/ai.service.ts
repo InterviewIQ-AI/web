@@ -30,7 +30,7 @@ interface KeySlot {
   cooldownMs:  number;
 }
 
-const RATE_LIMIT_BASE_COOLDOWN = 60_000;   // 60 s — doubles per failure
+const RATE_LIMIT_BASE_COOLDOWN = 5_000;    // 5 s — keys self-heal almost immediately
 const AUTH_FAIL_COOLDOWN       = 3_600_000; // 1 h — effectively dead
 const MAX_FAILURES_BEFORE_OPEN = 3;
 
@@ -424,8 +424,15 @@ export class AiService {
    * Only throws after all tiers and all keys are exhausted.
    */
   private async generateWithFallback(prompt: string, useJson = true): Promise<any> {
-    // Tier 1: fastest / highest free quota  →  Tier 2: higher quality
-    const modelTiers = ['gemini-2.0-flash', 'gemini-2.5-flash'];
+    // Model tiers ordered by speed / quota availability.
+    // 1.5-flash has a SEPARATE quota bucket from 2.0-flash — key fallback.
+    const modelTiers = [
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-8b',
+      'gemini-2.5-flash',
+    ];
     let lastError: any = null;
 
     for (const modelName of modelTiers) {
@@ -443,40 +450,33 @@ export class AiService {
         if (useJson) {
           const parsed = this.tryParseJson(rawText);
           if (parsed !== null) return parsed;
-
           this.logger.warn(
             `JSON parse failed for model ${modelName}. ` +
             `Raw snippet: ${rawText.slice(0, 200)}. Advancing to next tier.`,
           );
           lastError = new Error(`JSON parse failed for model ${modelName}`);
-          continue; // bad JSON — try next model tier
+          continue;
         }
 
         return rawText;
       } catch (error: any) {
         lastError = error;
-
         if (error.message === 'ALL_KEYS_EXHAUSTED') {
           this.logger.warn(
-            `All ${this.keyPool.size} key(s) exhausted for model ${modelName}. ` +
-            `Advancing to next tier.`,
+            `All ${this.keyPool.size} key(s) exhausted for model ${modelName}. Advancing to next tier.`,
           );
-          continue; // try cheaper/different model tier
+          continue;
         }
-
-        // Unexpected error — log internally, still try next tier
-        this.logger.warn(
-          `Unexpected error on model ${modelName}: ${error.message}. Advancing to next tier.`,
-        );
+        this.logger.warn(`Unexpected error on model ${modelName}: ${error.message}. Advancing to next tier.`);
       }
     }
 
     this.logger.error(
-      `All model tiers and all ${this.keyPool.size} key(s) exhausted. ` +
-      `Pool status: ${JSON.stringify(this.keyPool.status())}`,
-      lastError?.stack,
+      `All model tiers exhausted. Pool: ${JSON.stringify(this.keyPool.status())}`,
     );
-    throw new InternalServerErrorException(this.getFriendlyErrorMessage(lastError));
+    throw new InternalServerErrorException(
+      'AI quota temporarily exceeded. Please wait a few seconds and try again.',
+    );
   }
 
   // ─── Question Generation ───────────────────────────────────────────────────

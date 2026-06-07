@@ -104,8 +104,8 @@ function ConfigModal({
   onStart: (roundType: RoundType, difficulty: Difficulty) => void;
   loading: boolean;
 }) {
-  const [round, setRound] = useState<RoundType>('TR');
-  const [diff, setDiff] = useState<Difficulty>('medium');
+  const [round, setRound] = useState<RoundType | null>(null);
+  const [diff, setDiff] = useState<Difficulty | null>(null);
 
   return (
     <AnimatePresence>
@@ -213,16 +213,22 @@ function ConfigModal({
             {/* Footer */}
             <div className="px-6 pb-6">
               <button
-                onClick={() => onStart(round, diff)}
-                disabled={loading}
+                onClick={() => round && diff && onStart(round, diff)}
+                disabled={loading || !round || !diff}
                 className="w-full flex items-center justify-center gap-2 bg-black hover:bg-[#222222] disabled:bg-[#E5E5E5] disabled:text-[#999999] text-white font-semibold py-3.5 transition-all text-sm"
               >
                 {loading ? (
                   <><Loader2 size={18} className="animate-spin" /> Generating questions…</>
                 ) : (
-                  <><span>Start Interview</span><ArrowRight size={16} /></>
+                  <>
+                    <span>Start Interview</span>
+                    <ArrowRight size={16} />
+                  </>
                 )}
               </button>
+              {(!round || !diff) && !loading && (
+                <p className="text-center text-xs text-[#999999] mt-2">Please select a round type and difficulty to continue.</p>
+              )}
             </div>
           </motion.div>
         </motion.div>

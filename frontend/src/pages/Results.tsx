@@ -319,7 +319,7 @@ export default function Results() {
                               </div>
                             </div>
                           )}
-                          {answer?.behavioralFeedback && (
+                          {answer?.behavioralFeedback && q.category === 'BEHAVIORAL' && (
                             <div className="bg-white border border-[#E5E5E5] p-5">
                               <p className="text-[10px] font-medium text-black uppercase tracking-[0.15em] mb-4">Behavioral Analysis</p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -362,42 +362,131 @@ export default function Results() {
                 <p className="text-sm mt-1">Complete more questions with expected concepts to see this.</p>
               </div>
             ) : (
-              <div className="border border-[#E5E5E5] p-8">
-                <h2 className="text-lg font-semibold mb-2">Skill Gap Radar</h2>
-                <p className="text-[#999999] text-sm mb-8">Average score per concept area across all questions. Closer to 10 = stronger.</p>
-                <div className="h-[380px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
-                      <PolarGrid stroke="#E5E5E5" />
-                      <PolarAngleAxis
-                        dataKey="concept"
-                        tick={{ fill: '#666666', fontSize: 11, fontWeight: 500 }}
-                      />
-                      <Radar
-                        name="Score"
-                        dataKey="score"
-                        stroke="#000000"
-                        fill="#000000"
-                        fillOpacity={0.08}
-                        strokeWidth={2}
-                      />
-                      <Tooltip
-                        contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E5E5', borderRadius: 0 }}
-                        labelStyle={{ color: '#000000', fontWeight: 600 }}
-                        formatter={(val: any) => [`${val}/10`, 'Avg Score']}
-                      />
-                    </RadarChart>
-                  </ResponsiveContainer>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Skill Radar */}
+                <div className="border border-[#E5E5E5] p-8">
+                  <h2 className="text-lg font-semibold mb-2">Skill Gap Radar</h2>
+                  <p className="text-[#999999] text-sm mb-8">Average score per concept area across all questions. Closer to 10 = stronger.</p>
+                  <div className="h-[320px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                        <PolarGrid stroke="#E5E5E5" />
+                        <PolarAngleAxis
+                          dataKey="concept"
+                          tick={{ fill: '#666666', fontSize: 11, fontWeight: 500 }}
+                        />
+                        <Radar
+                          name="Score"
+                          dataKey="score"
+                          stroke="#000000"
+                          fill="#000000"
+                          fillOpacity={0.08}
+                          strokeWidth={2}
+                        />
+                        <Tooltip
+                          contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E5E5', borderRadius: 0 }}
+                          labelStyle={{ color: '#000000', fontWeight: 600 }}
+                          formatter={(val: any) => [`${val}/10`, 'Avg Score']}
+                        />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t border-[#E5E5E5]">
+                    {radarData.map(d => (
+                      <div key={d.concept} className="flex items-center gap-2">
+                        <span className={`w-2 h-2 ${d.score >= 7 ? 'bg-black' : d.score >= 4 ? 'bg-[#999999]' : 'bg-[#CCCCCC]'}`} />
+                        <span className="text-xs text-[#666666]">{d.concept} <span className="font-semibold text-black">{d.score}</span></span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Legend */}
-                <div className="flex flex-wrap gap-4 mt-6 pt-6 border-t border-[#E5E5E5]">
-                  {radarData.map(d => (
-                    <div key={d.concept} className="flex items-center gap-2">
-                      <span className={`w-2 h-2 ${d.score >= 7 ? 'bg-black' : d.score >= 4 ? 'bg-[#999999]' : 'bg-[#CCCCCC]'}`} />
-                      <span className="text-xs text-[#666666]">{d.concept} <span className="font-semibold text-black">{d.score}</span></span>
-                    </div>
-                  ))}
+                {/* Critical Improvements */}
+                <div className="border border-[#E5E5E5] p-8 flex flex-col">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle size={18} className="text-[#D00000]" />
+                    <h2 className="text-lg font-semibold">Critical Improvements</h2>
+                  </div>
+                  <p className="text-[#999999] text-sm mb-6">Areas that need immediate attention based on your lowest-scoring answers.</p>
+                  <div className="space-y-4 flex-1">
+                    {(() => {
+                      const weakAreas = radarData
+                        .filter(d => d.score < 6)
+                        .sort((a, b) => a.score - b.score);
+                      const allMissing = data.questions
+                        .flatMap(q => q.answers[0]?.missingConcepts ?? [])
+                        .reduce((acc: Record<string, number>, c) => { acc[c] = (acc[c] || 0) + 1; return acc; }, {});
+                      const topMissing = Object.entries(allMissing)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 5);
+                      const weakQuestions = data.questions
+                        .filter(q => (q.answers[0]?.score ?? 10) < 5)
+                        .sort((a, b) => (a.answers[0]?.score ?? 0) - (b.answers[0]?.score ?? 0))
+                        .slice(0, 3);
+
+                      if (weakAreas.length === 0 && topMissing.length === 0 && weakQuestions.length === 0) {
+                        return (
+                          <div className="flex flex-col items-center justify-center text-center py-8 flex-1">
+                            <Award size={36} className="text-black mb-3" />
+                            <p className="font-semibold text-black">Excellent performance!</p>
+                            <p className="text-[#999999] text-sm mt-1">No critical weak spots detected. Keep it up!</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <>
+                          {weakAreas.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-[#D00000] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <AlertCircle size={11} /> Weak Skill Areas
+                              </p>
+                              <div className="space-y-2">
+                                {weakAreas.slice(0, 4).map(d => (
+                                  <div key={d.concept} className="flex items-center justify-between border border-[#FECACA] bg-[#FEF2F2] px-3 py-2">
+                                    <span className="text-sm font-medium text-[#333333]">{d.concept}</span>
+                                    <span className="text-sm font-bold text-[#D00000]">{d.score}/10</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {topMissing.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <Lightbulb size={11} /> Frequently Missing Concepts
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {topMissing.map(([concept, count]) => (
+                                  <span key={concept} className="text-xs px-3 py-1.5 border border-[#E5E5E5] bg-[#FAFAFA] text-[#333333] flex items-center gap-1.5">
+                                    {concept}
+                                    <span className="text-[10px] text-[#999999] font-medium">×{count}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {weakQuestions.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-[#999999] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                <Target size={11} /> Questions Needing Review
+                              </p>
+                              <div className="space-y-2">
+                                {weakQuestions.map(q => (
+                                  <div key={q.id} className="border border-[#E5E5E5] px-3 py-2">
+                                    <p className="text-xs text-[#666666] line-clamp-2 mb-1">{q.questionText}</p>
+                                    <span className="text-[10px] font-bold text-[#D00000]">Score: {q.answers[0]?.score ?? 0}/10</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             )}

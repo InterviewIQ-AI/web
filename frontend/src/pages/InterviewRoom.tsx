@@ -488,9 +488,9 @@ export default function InterviewRoom() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion?.id]);
 
-  // Timer expiry → auto submit
+  // Timer expiry → auto submit (also submit even with no answer to move forward)
   useEffect(() => {
-    if (timeLeft === 0 && answerRef.current.trim() && !isSubmittingRef.current && !evaluationRef.current) {
+    if (timeLeft === 0 && !isSubmittingRef.current && !evaluationRef.current) {
       void submitAnswerRef.current();
     }
   }, [timeLeft]);
@@ -573,7 +573,7 @@ export default function InterviewRoom() {
   // ─── Submit Answer ────────────────────────────────────────────────────────
   const submitAnswer = async (overrideText?: string) => {
     const answerText = (overrideText ?? answer).trim();
-    if (!answerText || !currentQuestion) return;
+    if (!currentQuestion) return;
     setAutoSubmitTriggered(false);
 
     // Stop recording
@@ -587,7 +587,7 @@ export default function InterviewRoom() {
     }
     setIsRecording(false);
 
-    setIsSubmitting(true);
+    // Immediately move to next question UI (evaluate in background)
     isSubmittingRef.current = true;
     setErrorMsg('');
 
@@ -596,21 +596,30 @@ export default function InterviewRoom() {
       ...answeredHistoryRef.current,
       { question: currentQuestion.questionText, answer: answerText },
     ];
+    answeredHistoryRef.current = updatedHistory;
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
+    const snapshotsCopy = [...snapshots];
+    setSnapshots([]);
+    const questionForEval = currentQuestion;
+    isVoiceAnswerRef.current = false;
+
+    // Show a brief loading state while we wait for the next question from the backend,
+    // then instantly switch without showing an evaluation screen.
+    setIsSubmitting(true);
     try {
       const res = await apiFetch('/api/interview/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          questionId: currentQuestion.id,
-          userAnswer: answerText,
-          isVoice: isVoiceAnswerRef.current,
+          questionId: questionForEval.id,
+          userAnswer: answerText || '(no answer)',
+          isVoice: false,
           timeTakenSeconds: timeTaken,
           history: updatedHistory,
-          snapshots,
+          snapshots: snapshotsCopy,
         }),
       });
-      setSnapshots([]);
 
       if (!res.ok) {
         const e = await res.json().catch(() => ({})) as { message?: string };
@@ -625,18 +634,17 @@ export default function InterviewRoom() {
 
       evaluationRef.current = data.evaluation;
       setIsFollowUp(data.isFollowUp ?? false);
-      answeredHistoryRef.current = updatedHistory;
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
       if (data.nextQuestion) {
+        // Instantly move to next question — no evaluation screen shown
         setCurrentQuestion(data.nextQuestion);
         setQuestionNumber(n => n + 1);
         setAnswer('');
         accumulatedTranscriptRef.current = '';
+        evaluationRef.current = null;
       } else {
         await handleEndInterview();
       }
-      isVoiceAnswerRef.current = false;
     } catch (err) {
       setErrorMsg('Error: ' + (err instanceof Error ? err.message : 'Unknown'));
     } finally {
@@ -749,37 +757,48 @@ export default function InterviewRoom() {
         )}
       </AnimatePresence>
 
-      {/* ══ Evaluating Overlay ══ */}
+      {/* ══ Evaluating Overlay — brief spinner only, not full screen block ══ */}
+      {/* Evaluation happens in background; overlay removed to avoid blocking next question */}
+
+      {/* ══ Ending Interview Overlay ══ */}
       <AnimatePresence>
-        {isSubmitting && (
+        {isEnding && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-sm"
           >
             <div className="flex flex-col items-center gap-8 text-center px-8">
-              <div className="flex items-center gap-3">
-                {[0, 1, 2].map(i => (
-                  <motion.div key={i} className="w-4 h-4 rounded-full bg-white"
-                    animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
+              <div className="relative w-20 h-20">
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-white/10"
+                />
+                <motion.div
+                  className="absolute inset-0 rounded-full border-2 border-t-white border-r-transparent border-b-transparent border-l-transparent"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <LogOut size={24} className="text-white" />
+                </div>
               </div>
               <div>
-                <AnimatePresence mode="wait">
-                  <motion.p key={evalTipIndex}
-                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-                    className="text-xl font-semibold text-white"
-                  >
-                    {EVAL_TIPS[evalTipIndex]}
-                  </motion.p>
-                </AnimatePresence>
-                <p className="text-[#555] text-sm mt-2">AI is reviewing your response…</p>
+                <motion.p
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  className="text-2xl font-semibold text-white mb-2"
+                >
+                  Wrapping up your interview…
+                </motion.p>
+                <p className="text-[#555] text-sm">Generating your performance report</p>
               </div>
-              <div className="w-64 h-1 bg-[#222] rounded-full overflow-hidden">
+              <div className="w-64 h-0.5 bg-[#1a1a1a] rounded-full overflow-hidden">
                 <motion.div className="h-full bg-white rounded-full"
-                  animate={{ width: ['0%', '90%'] }} transition={{ duration: 5, ease: 'easeInOut' }}
+                  animate={{ width: ['0%', '100%'] }} transition={{ duration: 3, ease: 'easeInOut' }}
                 />
+              </div>
+              <div className="flex items-center gap-6 text-[#333] text-xs">
+                <span>✓ Saving responses</span>
+                <span>✓ Scoring answers</span>
+                <span>⟳ Building report</span>
               </div>
             </div>
           </motion.div>
@@ -954,19 +973,71 @@ export default function InterviewRoom() {
           </div>
         </div>
 
-        {/* Question text */}
+        {/* Answer Tips Panel */}
         <div className="px-4 py-4 flex-1 overflow-y-auto">
-          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">Current Question</p>
-          <p className="text-[13px] text-[#ccc] leading-relaxed">{currentQuestion.questionText}</p>
+          <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-3">Answer Tips</p>
+          <div className="space-y-3">
+            {currentQuestion.category === 'TECHNICAL' ? (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-[#22c55e] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Structure answer: Concept → Why it matters → Real-world use</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-[#22c55e] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Mention trade-offs and alternatives where applicable</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-[#22c55e] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Give a concrete example or scenario</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-blue-400 text-[11px] mt-0.5 flex-shrink-0">★</span>
+                  <p className="text-[12px] text-[#555] leading-relaxed italic">Aim for 60–90 seconds depth</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <span className="text-[#f59e0b] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Use STAR: Situation, Task, Action, Result</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-[#f59e0b] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Be specific — avoid vague generalities</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-[#f59e0b] text-[11px] mt-0.5 flex-shrink-0">▸</span>
+                  <p className="text-[12px] text-[#666] leading-relaxed">Quantify impact where possible (%, time saved)</p>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-blue-400 text-[11px] mt-0.5 flex-shrink-0">★</span>
+                  <p className="text-[12px] text-[#555] leading-relaxed italic">Keep it concise — 90s to 2 min max</p>
+                </div>
+              </>
+            )}
+          </div>
+          {/* Expected concepts hint */}
+          {currentQuestion.expectedConcepts?.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-[#1a1a1a]">
+              <p className="text-[10px] font-semibold text-[#333] uppercase tracking-widest mb-2">Key Concepts</p>
+              <div className="flex flex-wrap gap-1.5">
+                {currentQuestion.expectedConcepts.slice(0, 5).map(c => (
+                  <span key={c} className="text-[10px] px-2 py-0.5 border border-[#222] bg-[#111] text-[#555] rounded">{c}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="px-4 py-4 border-t border-[#1a1a1a]">
           <button
             onClick={handleEndInterview}
             disabled={isEnding || isSubmitting}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-[#2a2a2a] hover:border-red-500/50 text-[#555] hover:text-red-400 text-xs font-medium transition-all disabled:opacity-40"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-400 text-xs font-medium transition-all disabled:opacity-40"
           >
-            <LogOut size={13} /> End Interview
+            {isEnding ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />}
+            {isEnding ? 'Ending…' : 'End Interview'}
           </button>
         </div>
       </div>
